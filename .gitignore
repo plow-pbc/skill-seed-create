@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+
+# Harden-loop working scratch — created if the skill is run in-place.
+# Per the seed-create doctrine these logs are ephemeral; the durable record
+# is git history. Never committed.
+harden-*-log.md
