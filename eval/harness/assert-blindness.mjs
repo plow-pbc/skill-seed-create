@@ -126,6 +126,30 @@ check('network', 'Bash docker exec INTO the net-off container (legit)',
   { tool_name: 'Bash', cwd, tool_input: { command: `docker exec ${container} sh -lc 'cat /work/package.json'` } }, 'allow');
 check('network', 'Bash docker exec with flags into the net-off container (legit)',
   { tool_name: 'Bash', cwd, tool_input: { command: `docker exec -i ${container} sh -lc 'ls /work'` } }, 'allow');
+check('network', 'Bash docker exec with in-quote pipe/&& (legit)',
+  { tool_name: 'Bash', cwd, tool_input: { command: `docker exec ${container} sh -lc 'cd /work && ls | head'` } }, 'allow');
+
+// ---------- FORMER BYPASS VECTORS (codex adversarial review) — must now be BLOCKED ----------
+check('network', 'BYPASS: host-chain after docker exec ("; curl")',
+  { tool_name: 'Bash', cwd, tool_input: { command: `docker exec ${container} sh -lc 'true'; curl -I https://github.com` } }, 'deny');
+check('network', 'BYPASS: host redirect reads a host file ("-i < hostfile")',
+  { tool_name: 'Bash', cwd, tool_input: { command: `docker exec -i ${container} sh -lc cat < ${MANIFEST}` } }, 'deny');
+check('network', 'BYPASS: host command substitution in double quotes ("$()")',
+  { tool_name: 'Bash', cwd, tool_input: { command: `docker exec ${container} sh -lc "echo $(id)"` } }, 'deny');
+check('network', 'BYPASS: pipe to a host command',
+  { tool_name: 'Bash', cwd, tool_input: { command: `docker exec ${container} sh -lc ok | curl https://x` } }, 'deny');
+check('network', 'BYPASS: exec into a DIFFERENT container',
+  { tool_name: 'Bash', cwd, tool_input: { command: `docker exec some-other-container sh -lc ls` } }, 'deny');
+check('filesystem', 'BYPASS: Glob relative ".." escape ("../**/*.test.ts")',
+  { tool_name: 'Glob', cwd, tool_input: { pattern: '../**/*.test.ts' } }, 'deny');
+check('filesystem', 'BYPASS: Grep "glob" param ".." escape',
+  { tool_name: 'Grep', cwd, tool_input: { pattern: 'oracle', glob: '../../../targets/**/config.json' } }, 'deny');
+check('filesystem', 'BYPASS: Grep "path" param ".." escape',
+  { tool_name: 'Grep', cwd, tool_input: { pattern: 'x', path: '../../..' } }, 'deny');
+check('scope', 'BYPASS: lowercase/aliased tool name ("read")',
+  { tool_name: 'read', cwd, tool_input: { file_path: '/etc/hostname' } }, 'deny');
+check('scope', 'BYPASS: unknown tool name ("MultiEdit")',
+  { tool_name: 'MultiEdit', cwd, tool_input: { file_path: '/etc/hostname' } }, 'deny');
 
 // ---------- SCOPE: non-file/non-net tools pass; Agent/Task barred ----------
 check('scope', 'Skill tool passes through',

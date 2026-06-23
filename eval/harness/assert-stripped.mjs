@@ -69,6 +69,26 @@ const survived = [...new Set([...survivedByGlob, ...survivedExact])].sort();
 
 const packageJsonPresent = files.includes('package.json'); // capability context must remain
 
+// ---- residual oracle-metadata leak scan (review cycle 2, IMPORTANT 3) -------
+// Retained prose docs must NOT enumerate the test inventory (names / counts /
+// coverage). strip-oracle.mjs redacts these; here we PROVE none survive.
+const testBasenames = (cfg.oracle?.expected?.testFiles || []).map((t) => t.split('/').pop()).filter(Boolean);
+const LEAK_PATTERNS = [
+  { name: '__tests__ reference', re: /__tests__/i },
+  { name: 'test/spec filename', re: /\b\w[\w.-]*\.(test|spec)\.[a-z]+\b/i },
+  { name: 'explicit test count', re: /\b\d+\s*(?:unit\s+|integration\s+)?tests?\b/i },
+  { name: 'coverage reference', re: /coverage/i },
+  ...testBasenames.map((b) => ({ name: `oracle test name ${b}`, re: new RegExp(b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })),
+];
+const proseFiles = files.filter((f) => /\.(md|markdown|txt|rst)$/i.test(f));
+const leaks = [];
+for (const f of proseFiles) {
+  const lines = readFileSync(join(workspace, f), 'utf8').split('\n');
+  lines.forEach((ln, i) => {
+    for (const p of LEAK_PATTERNS) if (p.re.test(ln)) leaks.push({ file: f, line: i + 1, kind: p.name, text: ln.slice(0, 80) });
+  });
+}
+
 const manifest = {
   schemaVersion: 1,
   target: cfg.name,
@@ -78,6 +98,7 @@ const manifest = {
   strippedExactFiles: oracleExactFiles,
   oracleArtifactsSurviving: survived, // MUST be empty
   packageJsonPresent,
+  oracleMetadataLeaks: leaks, // MUST be empty (no test names/counts in retained prose)
   remainingFileCount: files.length,
   remainingFiles: files.sort(),
 };
@@ -87,6 +108,8 @@ console.log(`[strip] workspace files: ${files.length}`);
 console.log(`[strip] oracle artifacts surviving the strip: ${survived.length}`);
 for (const f of survived) console.log(`  SURVIVED: ${f}`);
 console.log(`[strip] package.json present (capability context): ${packageJsonPresent}`);
+console.log(`[strip] oracle-metadata leaks in retained prose: ${leaks.length}`);
+for (const l of leaks) console.log(`  LEAK ${l.file}:${l.line} (${l.kind}): ${l.text}`);
 
 if (survived.length > 0) {
   console.error(`\n[strip] ABORT: ${survived.length} oracle artifact(s) survived the strip — blindness compromised.`);
@@ -96,5 +119,9 @@ if (!packageJsonPresent) {
   console.error(`\n[strip] ABORT: package.json missing — capability context was over-stripped.`);
   process.exit(5);
 }
-console.log(`\n[strip] OK: no oracle artifacts present; package.json retained. strip-manifest.json written.`);
+if (leaks.length > 0) {
+  console.error(`\n[strip] ABORT: ${leaks.length} oracle-metadata leak(s) (test names/counts/coverage) survived in retained docs — prior-knowledge blindness compromised.`);
+  process.exit(5);
+}
+console.log(`\n[strip] OK: no oracle artifacts, no metadata leaks; package.json retained. strip-manifest.json written.`);
 process.exit(0);

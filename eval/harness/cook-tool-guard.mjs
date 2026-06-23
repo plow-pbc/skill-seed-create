@@ -92,6 +92,18 @@ function within(p, readOnly) {
 
 // ---- file tools: confine to the single stripped workspace ------------------
 const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit', 'Glob', 'Grep', 'LS']);
+
+// The non-glob literal prefix of a pattern (everything before the first magic char).
+// `../**/*.test.ts` -> `../`, `node_modules/**` -> `node_modules/`, `**/x` -> ``.
+function globPrefix(s) {
+  const i = String(s).search(/[*?\[{]/);
+  return i === -1 ? String(s) : String(s).slice(0, i);
+}
+
+// Return EVERY path the call could read/write, as strings to feed to within().
+// Critical: for Glob/Grep we must resolve EVERY path-bearing param — `path`,
+// Glob's `pattern`, and Grep's `glob` — relative to the effective base (path||cwd),
+// so a relative `../` escape in the pattern/glob is caught (prior bypass).
 function filePaths(t, inp) {
   const out = [];
   const push = (v) => { if (typeof v === 'string' && v.length) out.push(v); };
@@ -99,9 +111,18 @@ function filePaths(t, inp) {
   else if (t === 'NotebookEdit') push(inp.notebook_path);
   else if (t === 'LS') push(inp.path);
   else if (t === 'Glob' || t === 'Grep') {
-    push(inp.path);                                   // search root (defaults to cwd if absent)
-    if (typeof inp.pattern === 'string' && isAbsolute(inp.pattern)) push(inp.pattern); // abs pattern escape
-    if (out.length === 0) push(cwd);                  // no path => searches cwd; check cwd
+    // effective base for relative patterns: inp.path if given, else cwd
+    const rawBase = (typeof inp.path === 'string' && inp.path) ? inp.path : cwd;
+    const base = isAbsolute(rawBase) ? rawBase : join(cwd, rawBase);
+    push(inp.path);                                   // the search root itself
+    const pats = [];
+    if (t === 'Glob' && typeof inp.pattern === 'string') pats.push(inp.pattern);
+    if (t === 'Grep' && typeof inp.glob === 'string') pats.push(inp.glob); // Grep's path filter
+    for (const p of pats) {
+      const pref = globPrefix(p);
+      out.push(isAbsolute(pref) ? pref : join(base, pref));
+    }
+    if (out.length === 0) out.push(cwd);              // no params => searches cwd
   }
   return out;
 }
@@ -126,9 +147,45 @@ if (NET_TOOLS.has(tool)) {
   decide('deny', `BLINDNESS GATE: ${tool} is not permitted — the cook is test-blind and offline.`);
 }
 
-// ---- Bash: confine to docker exec into the net-off capture container --------
+// ---- Bash: confine to ONE docker-exec-into-net-off-container invocation ------
+// Prior CRITICAL bypass: the allow-rule was prefix-only, so anything after a
+// well-formed `docker exec NAME ...` ran on the HOST —
+//   docker exec NAME sh -lc 'true'; curl ...        (host chain)
+//   docker exec -i NAME sh -lc cat < hostfile        (host redirect / exfil)
+// Fix: reject ANY host-level shell metacharacter that chains/backgrounds/redirects/
+// substitutes, OUTSIDE single quotes. Inside single quotes (the `sh -lc '…'` arg)
+// the cook may freely use |, <, ;, $ — that all runs INSIDE the container.
+// `$` and backtick are also flagged inside DOUBLE quotes (command substitution
+// still expands on the host there); only single quotes fully neutralise them.
+function hostMetaViolation(s) {
+  let inS = false, inD = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inS) { if (c === "'") inS = false; continue; }
+    if (inD) {
+      if (c === '"') inD = false;
+      else if (c === '$' || c === '`') return c;     // host command/var substitution in dquotes
+      continue;
+    }
+    if (c === "'") { inS = true; continue; }
+    if (c === '"') { inD = true; continue; }
+    if (c === '\n' || c === '\r') return '\\n';
+    if (';|&<>()`$'.includes(c)) return c;           // chain/bg/pipe/redirect/subshell/subst
+    if (c === '\\') return '\\';                      // host-level escape
+  }
+  return (inS || inD) ? 'unterminated-quote' : null;
+}
+
 if (tool === 'Bash') {
   const cmd = String(input.command ?? '');
+
+  const meta = hostMetaViolation(cmd);
+  if (meta) {
+    decide('deny',
+      `BLINDNESS GATE (network): host-level shell metacharacter "${meta}" is not permitted. ` +
+        `Run EXACTLY one  docker exec ${NAME} sh -lc '<script>'  — put all chaining/pipes/redirects ` +
+        `INSIDE the single-quoted script (it executes in the offline container, not on the host).`);
+  }
 
   // Hard blocks: anything that could escape the net-off container or open a net path.
   const ESCAPE = /(docker\s+(run|create|network|cp|build)|--network|--privileged|--cap-add|nsenter|\bunshare\b|\bip\s+netns\b|\/proc\/1\/root)/i;
@@ -136,14 +193,15 @@ if (tool === 'Bash') {
     decide('deny', 'BLINDNESS GATE (network): container-escape / network-reconfig verb is not permitted.');
   }
 
-  // Allow ONLY `docker exec [flags] <NAME> ...` into the designated net-off container.
+  // Allow ONLY `docker exec [flags] <NAME> …` into the run's designated net-off
+  // container (NAME is pinned exactly; a different/long-prefixed container fails).
   const flag = '(?:-[itu]+|--interactive|--tty|-e\\s+\\S+|--env\\s+\\S+|-w\\s+\\S+|--workdir(?:=|\\s+)\\S+|-u\\s+\\S+)';
   const allowed = NAME && new RegExp(
     '^\\s*docker\\s+exec\\s+(?:' + flag + '\\s+)*' +
       NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:\\s|$)'
   );
   if (allowed && allowed.test(cmd)) {
-    decide('allow', `confined: runs inside net-off container ${NAME}`);
+    decide('allow', `confined: single docker exec into net-off container ${NAME}`);
   }
 
   decide('deny',
@@ -152,5 +210,17 @@ if (tool === 'Bash') {
       `cannot fetch the target). Study files with Read/Glob/Grep inside the stripped workspace.`);
 }
 
-// ---- everything else (Skill, TodoWrite, ...) -------------------------------
-decide('allow', `non-file, non-network tool: ${tool || '(unknown)'}`);
+// ---- deny-by-default: only an explicit allow-list of safe, non-file/non-network
+// orchestration tools passes. Unknown / aliased / case-variant tools (e.g.
+// lowercase `read`, `MultiEdit`) are DENIED (prior bug: they were allowed). ------
+const PASSTHRU = new Set([
+  'Skill', 'TodoWrite',
+  'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'TaskOutput', 'TaskStop',
+  'ToolSearch',
+]);
+if (tool && PASSTHRU.has(tool)) {
+  decide('allow', `safe orchestration tool (no filesystem/network reach): ${tool}`);
+}
+decide('deny',
+  `BLINDNESS GATE: tool "${tool || '(none)'}" is not on the allow-list (deny-by-default). ` +
+    `Allowed: file tools (workspace-confined), Bash (docker-exec-only), Skill/TodoWrite/Task*/ToolSearch.`);

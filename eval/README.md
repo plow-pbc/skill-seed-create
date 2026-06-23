@@ -129,9 +129,32 @@ non-oracle materials), and **stops at `SEEDCREATE_RESULT=DRAFT`** (no harden loo
 git-init'd by the harness. The hook is scoped to the cook's `--settings` only — it does NOT affect
 the harness shell (the harness still clones/builds normally; this scoping is itself the scope proof).
 
-Run-record outputs (under `runs/run-<id>/`): `capture-workspace/` (stripped), `strip-manifest.json`,
-`blocked-egress.log`, `blindness-proof.json`, `fs-blindness.log`, `interview-contract.md`, `seed/`,
-`cook-transcript.jsonl`, `cook-readable.md`, `cook-tool-log.txt`.
+**Guard hardening (review cycle 2 — after adversarial review).** `cook-tool-guard.mjs` is
+deny-by-default and airtight against the bypasses an earlier prefix-only version allowed:
+- **Bash** must be EXACTLY one `docker exec <the run's net-off container> …`; any host-level shell
+  metacharacter (`; | & < > ( ) $` backtick, newline) OUTSIDE single quotes is rejected, so
+  `… ; curl`, `… < hostfile`, `"$(…)"`, and pipes-to-host are all blocked. Pipes/`&&` INSIDE the
+  single-quoted `sh -lc '…'` script (which runs in the container) are fine.
+- **Glob/Grep** resolve EVERY path-bearing param (`path`, Glob `pattern`, Grep `glob`) relative to
+  cwd and canonicalize, so a relative `../**` escape is denied — not just absolute paths.
+- **deny-by-default tool allow-list**: unknown / aliased / case-variant tools (`read`, `MultiEdit`)
+  are denied; only file tools (workspace-confined), Bash (docker-exec-only), and
+  Skill/TodoWrite/Task*/ToolSearch pass.
+- The cook authors the seed with the **Write tool** (hook-confined to the workspace, into
+  `seed-output/`) — heredoc-via-`docker exec` is intentionally impossible under the metachar rule.
+- **Prior-knowledge redaction:** `strip-oracle.mjs` redacts oracle metadata (test file names,
+  counts, coverage goals) from retained prose docs (`CLAUDE.md`/`README*`); `assert-stripped.mjs`
+  fails if any survives — so "no test names/counts" is enforced, not just claimed.
+- **No silent accept:** `capture-run-cook.sh` aborts loudly on non-zero cook exit, a missing
+  `SEEDCREATE_RESULT=DRAFT` in the cook's final result, an empty seed, or a failed copy/commit.
+
+The former bypass vectors are now regression-covered in `assert-blindness.mjs` (a green proof MEANS
+they are blocked).
+
+Run-record outputs (under `runs/run-<id>/`): `capture-workspace/` (stripped + redacted),
+`strip-manifest.json` (incl. `oracleMetadataLeaks: []`), `blocked-egress.log`, `blindness-proof.json`,
+`fs-blindness.log`, `interview-contract.md`, `seed/`, `cook-transcript.jsonl`, `cook-readable.md`,
+`cook-tool-log.txt`.
 
 ## Scope boundary
 Chunk 1 produces the config + loader. Chunk 2 proves the pin builds and establishes the green
