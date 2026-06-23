@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "name": "oh-my-logo",
+  "description": "CLI that renders giant ASCII-art logos with colorful gradients in the terminal.",
+  "source": {
+    "repoUrl": "https://github.com/shinshin86/oh-my-logo.git",
+    "ref": "v0.5.0",
+    "sha": "9601a0d81c6820678456f04f0471a68bd6fe825d"
+  },
+  "baseImage": "node:20.18.1-bookworm-slim",
+  "language": "typescript",
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "test": "npx vitest run"
+  },
+  "_commands_note": "build resolves to `tsc --project tsconfig.json`; test uses `vitest run` (non-watch) rather than package.json's watch-mode `vitest`. Pins/build are PROVEN by Chunk 2, not here.",
+  "moduleSurface": {
+    "mountPoint": "src",
+    "note": "The oracle tests bind to the rebuilt module by RELATIVE path: `../src/*.js` and `../../src/utils/*.js` (compiled-extension imports of TS sources). cli.test.ts additionally runs the CLI via `npx tsx ../src/index.ts`. Chunk 5 must mount the rebuilt artifact's public surface at these exact paths for imports to resolve.",
+    "files": [
+      "src/index.ts",
+      "src/lib.ts",
+      "src/renderer.ts",
+      "src/InkRenderer.tsx",
+      "src/palettes.ts",
+      "src/utils/errors.ts",
+      "src/utils/stdout.ts"
+    ]
+  },
+  "devDeps": {
+    "@biomejs/biome": "^2.1.2",
+    "@types/figlet": "^1.5.8",
+    "@types/gradient-string": "^1.1.5",
+    "@types/node": "^20.19.1",
+    "@types/react": "^18.3.3",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.4"
+  },
+  "_devDeps_note": "Verbatim copy of package.json devDependencies at the pinned SHA. These are the test-runner + build toolchain. Exact resolution is pinned by the repo's package-lock.json (also present at this SHA). The scorer (Chunk 5) installs these to run the oracle; the build needs `typescript`; the test runner needs `vitest` (+ `tsx`, used by cli.test.ts to exec the CLI from source).",
+  "oracle": {
+    "description": "The held-out test suite for oh-my-logo @ the pinned SHA. This is ONE inventory that drives BOTH capture-withhold (Chunk 3) AND scorer-run (Chunk 5). Withholding is glob/file-based, never 'strip the test dir'. Globs are confirmed against the actual file layout at the SHA (see harness/load-config.mjs --verify).",
+    "tests": [
+      "__tests__/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"
+    ],
+    "config": [
+      "vitest.config.ts"
+    ],
+    "fixtures": [],
+    "snapshots": [],
+    "_fixtures_snapshots_note": "Confirmed empty at this SHA: no fixture files and no `__snapshots__/`/`*.snap` exist; tests are pure (no readFileSync of golden files, no toMatchSnapshot). Conventional vitest snapshot location would be `__tests__/**/__snapshots__/**` — recorded here as absent rather than as a zero-match glob, so verification stays honest.",
+    "testCommand": "npx vitest run",
+    "expected": {
+      "testFiles": [
+        "__tests__/InkRenderer.test.ts",
+        "__tests__/cli.test.ts",
+        "__tests__/lib.test.ts",
+        "__tests__/palettes.test.ts",
+        "__tests__/renderer.test.ts",
+        "__tests__/terminal-cleanup.test.ts",
+        "__tests__/utils/errors.test.ts",
+        "__tests__/utils/stdout.test.ts"
+      ],
+      "configFiles": [
+        "vitest.config.ts"
+      ],
+      "note": "Expanding the oracle globs against a clean checkout @ SHA must yield EXACTLY these files. The green test count is NOT asserted here — Chunk 2's baseline establishes N/N at the pin (don't take a count on faith)."
+    }
+  }
+}
