@@ -73,6 +73,11 @@ const total = report.numTotalTests ?? 0;
 const passed = report.numPassedTests ?? 0;
 const failed = report.numFailedTests ?? 0;
 const suitesFailed = report.numFailedTestSuites ?? 0;
+const pending = report.numPendingTests ?? 0; // skipped / it.skip / describe.skip
+const todo = report.numTodoTests ?? 0; // it.todo
+// Anything counted but neither passed nor failed (skip/pending/todo) — defensive
+// against schema drift so a "not run" test can never be silently treated as green.
+const notRun = Math.max(0, total - passed - failed);
 
 // vitest report paths are container-absolute (e.g. /work/__tests__/lib.test.ts);
 // relativize against the container workdir (posix), NOT the host workspace.
@@ -84,18 +89,32 @@ const missing = expected.filter((f) => !discovered.includes(f));
 const extra = discovered.filter((f) => !expected.includes(f));
 const manifestMatch = missing.length === 0 && extra.length === 0;
 
-const green = containerRC === 0 && failed === 0 && suitesFailed === 0 && total > 0;
+// GREEN requires every test to have actually PASSED — not merely "not failed".
+// passed===total catches skip/pending/todo (which inflate total but not passed);
+// the explicit pending/todo/notRun===0 checks are belt-and-suspenders vs schema drift.
+const green =
+  containerRC === 0 &&
+  total > 0 &&
+  passed === total &&
+  failed === 0 &&
+  suitesFailed === 0 &&
+  pending === 0 &&
+  todo === 0 &&
+  notRun === 0;
 
 const baseline = {
   ...base,
   green,
   status: green ? 'green' : 'not_green',
-  tests: { total, passed, failed, suitesFailed, files: discovered },
+  tests: { total, passed, failed, suitesFailed, pending, todo, notRun, files: discovered },
   manifest: { expected, discovered, match: manifestMatch, missing, extra },
 };
 write(baseline);
 
-console.log(`[baseline] tests: ${passed}/${total} passed (${failed} failed, ${suitesFailed} suite(s) failed)`);
+console.log(
+  `[baseline] tests: ${passed}/${total} passed ` +
+    `(${failed} failed, ${pending} pending/skipped, ${todo} todo, ${suitesFailed} suite(s) failed)`
+);
 console.log(`[baseline] manifest: ${manifestMatch ? 'MATCH' : 'DIVERGENCE'} (${discovered.length} files ran vs ${expected.length} expected)`);
 
 // (3) Manifest divergence — catch rot at the pin, don't misread later as low fidelity.
@@ -110,10 +129,13 @@ if (!manifestMatch) {
 }
 
 // (2) Not fully green — a non-green oracle is invalid; abort loudly, no fallback.
+// "Green" means EVERY test passed: skipped/pending/todo tests are NOT green
+// (silently-skipped tests would otherwise let a degraded oracle pass).
 if (!green) {
   loud(
-    `oracle suite is NOT fully green at the pin (${passed}/${total}, ${failed} failed, ` +
-      `${suitesFailed} suite(s) failed, container exit ${containerRC}).\n` +
+    `oracle suite is NOT fully green at the pin — every test must PASS.\n` +
+      `  passed ${passed}/${total}; ${failed} failed, ${pending} pending/skipped, ` +
+      `${todo} todo, ${notRun} not-run, ${suitesFailed} suite(s) failed; container exit ${containerRC}.\n` +
       `  A non-green oracle is invalid — the run is aborted. See test.log / container.log.`
   );
   process.exit(2);

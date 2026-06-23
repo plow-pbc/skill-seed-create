@@ -83,7 +83,13 @@ EMIT_RC=$?
 set -e
 
 if [ "$EMIT_RC" -ne 0 ]; then
-  abort "baseline NOT green / manifest divergence (emit rc=$EMIT_RC). baseline.json records the failure. See logs in $RUN_DIR."
+  # PROPAGATE emit-baseline.mjs's exact failure class (2 not_green / 3 manifest
+  # divergence / 4 no-report) — do NOT collapse to 1. Chunk 6 keys on these.
+  echo "" >&2
+  echo "[baseline] ABORT (exit $EMIT_RC): baseline not green / manifest divergence / no report." >&2
+  echo "[baseline] baseline.json records the failure. See logs in $RUN_DIR." >&2
+  echo "" >&2
+  exit "$EMIT_RC"
 fi
 
 log "BASELINE GREEN. record: $RUN_DIR/baseline.json"
