@@ -37,8 +37,15 @@ CONTAINER="$(cat "$RUN_DIR/capture-c.name")"
 [ -d "$WORKSPACE" ] || abort "no stripped workspace at $WORKSPACE (run capture-build-c.sh first)"
 docker inspect "$CONTAINER" >/dev/null 2>&1 || abort "capture container $CONTAINER not running"
 
+# SEED_DIR is the HOST destination — populated AFTER the cook exits by docker-cp'ing
+# the in-container /seedout out (NOT a bind mount; the old second mount phantom-faulted).
 saferm "$SEED_DIR" "$RUN_DIR" || true; mkdir -p "$SEED_DIR"
 saferm "$COOK_DIR" "$RUN_DIR" || true; mkdir -p "$COOK_DIR"
+
+# read carve-out: the cook may READ the seed-create skill's own (oracle-free) docs.
+SKILL_READ_ROOT="$(skill_read_root)"
+SEEDOUT_C="/seedout"   # in-container dir the cook writes the seed into
+docker exec "$CONTAINER" sh -lc "mkdir -p $SEEDOUT_C" || abort "could not create $SEEDOUT_C in $CONTAINER"
 
 # ---- fixed, recorded interview contract (derived ONLY from README/usage/source) ----
 cat > "$RUN_DIR/interview-contract.md" <<'CONTRACT'
@@ -85,7 +92,7 @@ cat > "$COOK_DIR/settings.json" <<JSON
     "PreToolUse": [
       { "matcher": "*",
         "hooks": [ { "type": "command",
-          "command": "COOK_WORKSPACE=$WORKSPACE COOK_CAPTURE_CONTAINER=$CONTAINER node $EVAL_DIR/harness/cook-tool-guard.mjs" } ] }
+          "command": "COOK_WORKSPACE=$WORKSPACE COOK_CAPTURE_CONTAINER=$CONTAINER COOK_ALLOW_READ=$SKILL_READ_ROOT node $EVAL_DIR/harness/cook-tool-guard.mjs" } ] }
     ]
   }
 }
@@ -101,7 +108,7 @@ cat > "$COOK_DIR/cook-briefing.md" <<EOF
 - cwd = the stripped workspace (the target with its test suite withheld).
 - File tools (Read/Glob/Grep) are HOOK-confined to this workspace; escapes are denied.
 - No network / no web/agent tools. Bash is confined to: docker exec $CONTAINER sh -lc '...'
-  (workspace mounted at /work; seed output at /seed). Stop at SEEDCREATE_RESULT=DRAFT.
+  (workspace mounted at /work; seed output dir is /seedout). Stop at SEEDCREATE_RESULT=DRAFT.
 EOF
 
 PROMPT="You are an autonomous author-creator cook for an eval of the seed-create skill. You are a
@@ -123,10 +130,12 @@ HARD RULES (enforced by a blindness-gate hook — violations are denied, not jus
 - You have NO network and NO web/agent tools. Do NOT git clone or npm install the target.
 - To RUN commands or WRITE the seed, use Bash confined to the OFFLINE container $CONTAINER:
     run:   docker exec $CONTAINER sh -lc '<command>'        (workspace is mounted at /work)
-    write: docker exec $CONTAINER sh -lc 'cat > /seed/<file> <<'\"'\"'EOF'\"'\"'
+    write: docker exec $CONTAINER sh -lc 'cat > /seedout/<file> <<'\"'\"'EOF'\"'\"'
            ...contents...
            EOF'
-  Everything under /seed becomes the seed repo (write SEED.md, README.md, and any shell scripts there).
+  Everything under /seedout becomes the seed repo (write SEED.md, README.md, and any shell scripts
+  there). /seedout already exists. Do NOT git-init it — the harness does that after you exit. Verify
+  with: docker exec $CONTAINER sh -lc 'ls -la /seedout'.
 - Invoke the seed-create skill and follow its procedure. When it interviews you, answer from the contract.
 - STOP at SEEDCREATE_RESULT=DRAFT. Do NOT run seed-create's harden loop. Do NOT publish.
 - When done, print a final line exactly: SEEDCREATE_RESULT=DRAFT
@@ -142,7 +151,7 @@ set +e
 # (seed is written via docker exec into /seed). cwd = the stripped workspace so the
 # cook's default Glob/Grep land in-workspace; escapes are denied by the guard.
 ( cd "$WORKSPACE" && timeout 900 claude -p "$PROMPT" \
-    --append-system-prompt "You are a FRESH, test-blind author-creator cook. You have never seen this target's tests or any manifest. Your file tools (Read/Glob/Grep) are confined to your working directory (the stripped target); any escape is denied. You have NO network and NO web/agent tools. Bash is confined to 'docker exec $CONTAINER' (offline; /work=workspace, /seed=output). Never fetch the target. Stop at SEEDCREATE_RESULT=DRAFT." \
+    --append-system-prompt "You are a FRESH, test-blind author-creator cook. You have never seen this target's tests or any manifest. Your file tools (Read/Glob/Grep) are confined to your working directory (the stripped target); any escape is denied. You have NO network and NO web/agent tools. Bash is confined to 'docker exec $CONTAINER' (offline; /work=workspace, /seedout=seed output dir). Never fetch the target. Stop at SEEDCREATE_RESULT=DRAFT." \
     --allowedTools "Skill" "Bash" "Read" "Glob" "Grep" "TodoWrite" \
     --disallowedTools "WebFetch" "WebSearch" "Agent" "Task" "AskUserQuestion" "Write" "Edit" "NotebookEdit" \
     --settings "$COOK_DIR/settings.json" \
@@ -156,7 +165,17 @@ log "cook exit=$COOK_RC"
 # ---- extract a readable result + tool log from the stream-json transcript ----
 node "$EVAL_DIR/harness/cook-transcript-summarize.mjs" "$RUN_DIR/cook-transcript.jsonl" "$RUN_DIR" || true
 
-# ---- harness finalize: git-init the seed (local, no network) ----
+# ---- harness finalize: copy the seed OUT of the container, then git-init -------
+# The cook (confined) wrote the seed into the in-container /seedout. The HOST
+# (unconfined) copies it out — no second bind mount, so no phantom-mount fault.
+log "copying seed out of $CONTAINER:$SEEDOUT_C -> $SEED_DIR ..."
+if docker exec "$CONTAINER" sh -lc "[ -n \"\$(ls -A $SEEDOUT_C 2>/dev/null)\" ]"; then
+  docker cp "$CONTAINER:$SEEDOUT_C/." "$SEED_DIR/" 2>&1 | tee "$RUN_DIR/seed-copy.log" || log "WARN: docker cp seed failed"
+else
+  log "WARN: $SEEDOUT_C is empty in $CONTAINER — the cook wrote no seed files."
+fi
+
+# git-init the seed (local, no network)
 if [ -n "$(ls -A "$SEED_DIR" 2>/dev/null)" ]; then
   if [ ! -d "$SEED_DIR/.git" ]; then
     git -C "$SEED_DIR" init -q

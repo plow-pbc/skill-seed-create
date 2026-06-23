@@ -70,14 +70,24 @@ function realResolve(p) {
   return tail.length ? join(real, ...tail) : real;
 }
 
+function realRoot(r) { try { return realpathSync(r); } catch { return resolve(r); } }
 let WS = '';
-if (WORKSPACE_ENV) { try { WS = realpathSync(WORKSPACE_ENV); } catch { WS = resolve(WORKSPACE_ENV); } }
+if (WORKSPACE_ENV) WS = realRoot(WORKSPACE_ENV);
+// COOK_ALLOW_READ: ':'-separated extra roots the cook may READ but not write — used
+// ONLY to grant the seed-create skill's own (target-agnostic, oracle-free) reference
+// files (SKILL.md/SEED.md/README.md). It does NOT relax write tools and does NOT
+// include the target repo, the oracle manifest (config.json), or the spec/briefs.
+const READ_ROOTS = (process.env.COOK_ALLOW_READ || '').split(':').filter(Boolean).map(realRoot);
 
-function within(p) {
+function under(rp, root) { return root && (rp === root || rp.startsWith(root + sep)); }
+// readOnly=true => workspace OR an allow-read root; writes => workspace only.
+function within(p, readOnly) {
   if (!WS) return false; // no workspace configured -> nothing is inside it
   const base = isAbsolute(p) ? p : join(cwd, p);
   const rp = realResolve(base);
-  return rp === WS || rp.startsWith(WS + sep);
+  if (under(rp, WS)) return true;
+  if (readOnly) for (const r of READ_ROOTS) if (under(rp, r)) return true;
+  return false;
 }
 
 // ---- file tools: confine to the single stripped workspace ------------------
@@ -97,16 +107,17 @@ function filePaths(t, inp) {
 }
 
 if (FILE_TOOLS.has(tool)) {
+  const readOnly = (tool === 'Read' || tool === 'Glob' || tool === 'Grep' || tool === 'LS');
   const paths = filePaths(tool, input);
-  const escapes = paths.filter((p) => !within(p));
+  const escapes = paths.filter((p) => !within(p, readOnly));
   if (escapes.length) {
     decide('deny',
       `BLINDNESS GATE (filesystem): ${tool} target escapes the stripped workspace: ` +
         `${escapes.map((p) => `"${p}"`).join(', ')}. The author-creator may only read the single ` +
-        `oracle-stripped workspace at ${WS || '(unset)'}. The held-out test suite, runner config, ` +
-        `lockfile, and the oracle manifest are NOT readable.`);
+        `oracle-stripped workspace at ${WS || '(unset)'} (plus the seed-create skill's own docs). ` +
+        `The held-out test suite, runner config, lockfile, and the oracle manifest are NOT readable.`);
   }
-  decide('allow', `confined: ${tool} stays inside the stripped workspace ${WS}`);
+  decide('allow', `confined: ${tool} stays inside the stripped workspace${readOnly && READ_ROOTS.length ? ' / allowed skill docs' : ''}`);
 }
 
 // ---- network-capable tools: deny (defense in depth) ------------------------

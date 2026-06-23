@@ -36,10 +36,11 @@ const EVAL_DIR = resolve(HERE, '..');
 const MANIFEST = join(EVAL_DIR, 'targets', target, 'config.json'); // the oracle manifest (must be unreadable)
 
 // Run the actual guard with the cook's env; return its permissionDecision.
+const ALLOW_READ = process.env.COOK_ALLOW_READ || ''; // mirrors the cook's read carve-out (skill docs)
 function ask(evt) {
   const out = execFileSync('node', [GUARD], {
     input: JSON.stringify(evt),
-    env: { ...process.env, COOK_WORKSPACE: WS, COOK_CAPTURE_CONTAINER: container },
+    env: { ...process.env, COOK_WORKSPACE: WS, COOK_CAPTURE_CONTAINER: container, COOK_ALLOW_READ: ALLOW_READ },
     encoding: 'utf8',
   });
   const parsed = JSON.parse(out);
@@ -94,6 +95,19 @@ check('filesystem', 'Glob source files inside the workspace',
   { tool_name: 'Glob', cwd, tool_input: { path: WS, pattern: '**/*.ts' } }, 'allow');
 check('filesystem', 'Grep inside the workspace',
   { tool_name: 'Grep', cwd, tool_input: { path: WS, pattern: 'export' } }, 'allow');
+// read carve-out (the seed-create skill's own oracle-free docs): readable, but the
+// manifest stays denied and the carve-out grants NO write access.
+if (ALLOW_READ) {
+  const skillRoot = ALLOW_READ.split(':').filter(Boolean)[0];
+  check('filesystem', 'Read seed-create skill doc via the read carve-out (allowed)',
+    { tool_name: 'Read', cwd, tool_input: { file_path: join(skillRoot, 'SEED.md') } }, 'allow');
+  check('filesystem', 'Glob the seed-create skill dir via the read carve-out (allowed)',
+    { tool_name: 'Glob', cwd, tool_input: { path: skillRoot, pattern: '**/*.md' } }, 'allow');
+  check('filesystem', 'WRITE into the skill carve-out is still DENIED (read-only carve-out)',
+    { tool_name: 'Write', cwd, tool_input: { file_path: join(skillRoot, 'pwn.md') } }, 'deny');
+  check('filesystem', 'oracle manifest STILL denied despite the carve-out',
+    { tool_name: 'Read', cwd, tool_input: { file_path: MANIFEST } }, 'deny');
+}
 
 // ---------- NETWORK axis: only docker-exec-into-net-off-C is allowed ----------
 check('network', 'Bash plain host command',

@@ -73,16 +73,15 @@ log "image: $(cat "$RUN_DIR/capture-c.image")"
 
 # ---- 5. run capture-C with NETWORK OFF ------------------------------------
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-# Seed OUTPUT dir is mounted into C so the cook (whose only tool path is docker
-# exec into C) can write the seed without ANY host filesystem access — closing
-# the filesystem-blindness axis (cook sees ONLY /work stripped + /seed).
-SEED_DIR="$RUN_DIR/seed"
-mkdir -p "$SEED_DIR"
-log "starting container C ($CONTAINER) with --network none (mounts: /work stripped, /seed output) ..."
+# Single bind mount: /work = the stripped workspace (rw, so the cook can build/test
+# in it). The seed is NOT a second bind mount — that previously phantom-faulted
+# (host backing dir removed at run-cook start -> ENOENT virtiofs mount). Instead the
+# cook writes the seed into an in-container dir (/seedout) and the unconfined HOST
+# docker-cp's it out after the cook exits (see capture-run-cook.sh). No second mount.
+log "starting container C ($CONTAINER) with --network none (mount: /work stripped, rw) ..."
 docker run -d --name "$CONTAINER" \
   --network none \
   -v "$WORKSPACE:/work" \
-  -v "$SEED_DIR:/seed" \
   -w /work \
   "$IMAGE" sleep infinity > "$RUN_DIR/container-c.id"
 log "container C id: $(cut -c1-12 < "$RUN_DIR/container-c.id")"
@@ -136,6 +135,7 @@ echo "$CONTAINER" > "$RUN_DIR/capture-c.name"
 # escapes) while in-workspace study stays allowed; and that the workspace itself
 # holds zero oracle artifacts. Aborts the build if any confinement case fails.
 log "running filesystem-blindness proof (cook tool-guard, positive demonstration) ..."
+COOK_ALLOW_READ="$(skill_read_root)" \
 node "$EVAL_DIR/harness/assert-blindness.mjs" "$TARGET" "$WORKSPACE" "$CONTAINER" "$RUN_DIR" \
   || { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; \
        abort "filesystem-blindness proof FAILED — see $RUN_DIR/fs-blindness.log"; }

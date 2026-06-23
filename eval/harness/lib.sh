@@ -30,3 +30,11 @@ require_cmd() {
   local c
   for c in "$@"; do command -v "$c" >/dev/null 2>&1 || abort "required command not found: $c"; done
 }
+
+# skill_read_root: realpath of the seed-create skill's install dir. The cook is
+# READ-allowed here (its own oracle-free docs: SKILL.md/SEED.md/README.md) so it
+# can author faithfully; this dir is target-agnostic and holds NO oracle. Empty if
+# the skill isn't installed at the standard path.
+skill_read_root() {
+  node -e "try{console.log(require('fs').realpathSync(require('os').homedir()+'/.claude/skills/seed-create'))}catch(e){}"
+}
