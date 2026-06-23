@@ -14,7 +14,7 @@
     "build": "npm run build",
     "test": "npx vitest run"
   },
-  "_commands_note": "build resolves to `tsc --project tsconfig.json`; test uses `vitest run` (non-watch) rather than package.json's watch-mode `vitest`. Pins/build are PROVEN by Chunk 2, not here.",
+  "_commands_note": "install is `npm ci` (deterministic; installs the EXACT tree from oracle.lockfile, fails if package.json and the lock disagree). build resolves to `tsc --project tsconfig.json`. test uses `vitest run` (non-watch) rather than package.json's watch-mode `vitest`. Pins/build are PROVEN by Chunk 2, not here.",
   "moduleSurface": {
     "mountPoint": "src",
     "note": "The oracle tests bind to the rebuilt module by RELATIVE path: `../src/*.js` and `../../src/utils/*.js` (compiled-extension imports of TS sources). cli.test.ts additionally runs the CLI via `npx tsx ../src/index.ts`. Chunk 5 must mount the rebuilt artifact's public surface at these exact paths for imports to resolve.",
@@ -40,9 +40,9 @@
     "typescript": "^5.3.3",
     "vitest": "^3.2.4"
   },
-  "_devDeps_note": "Verbatim copy of package.json devDependencies at the pinned SHA. These are the test-runner + build toolchain. Exact resolution is pinned by the repo's package-lock.json (also present at this SHA). The scorer (Chunk 5) installs these to run the oracle; the build needs `typescript`; the test runner needs `vitest` (+ `tsx`, used by cli.test.ts to exec the CLI from source).",
+  "_devDeps_note": "Verbatim copy of package.json devDependencies at the pinned SHA — these are caret RANGES and are NOT deterministic on their own. The authoritative pin is oracle.lockfile (package-lock.json @ SHA); baseline (Chunk 2) and scorer (Chunk 5) MUST `npm ci` against it so they reproduce the identical dep tree. devDeps is recorded here only as a human-readable manifest of the test/build toolchain (build needs `typescript`; the runner needs `vitest` + `tsx`, used by cli.test.ts to exec the CLI from source).",
   "oracle": {
-    "description": "The held-out test suite for oh-my-logo @ the pinned SHA. This is ONE inventory that drives BOTH capture-withhold (Chunk 3) AND scorer-run (Chunk 5). Withholding is glob/file-based, never 'strip the test dir'. Globs are confirmed against the actual file layout at the SHA (see harness/load-config.mjs --verify).",
+    "description": "The held-out test surface for oh-my-logo @ the pinned SHA, plus the inputs needed to RUN it deterministically. ONE inventory that drives BOTH capture-withhold (Chunk 3 strips these) AND scorer-run (Chunk 5 runs these). Withholding is glob/file-based, never 'strip the test dir'. Confirmed against the actual layout at the SHA by harness/load-config.mjs --verify (which also asserts HEAD==sha and runs a completeness scan).",
     "tests": [
       "__tests__/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"
     ],
@@ -51,8 +51,16 @@
     ],
     "fixtures": [],
     "snapshots": [],
-    "_fixtures_snapshots_note": "Confirmed empty at this SHA: no fixture files and no `__snapshots__/`/`*.snap` exist; tests are pure (no readFileSync of golden files, no toMatchSnapshot). Conventional vitest snapshot location would be `__tests__/**/__snapshots__/**` — recorded here as absent rather than as a zero-match glob, so verification stays honest.",
+    "lockfile": "package-lock.json",
     "testCommand": "npx vitest run",
+    "_fixtures_snapshots_note": "Confirmed empty at this SHA: no fixture files and no `__snapshots__/`/`*.snap` exist; tests are pure (no readFileSync of golden files, no toMatchSnapshot). Conventional vitest snapshot location would be `__tests__/**/__snapshots__/**` — recorded as absent (empty array) rather than as a zero-match glob, so verification stays honest.",
+    "excludedTestShaped": [
+      {
+        "path": "scripts/test-filled-mode.sh",
+        "reason": "Manual, interactive, non-deterministic dev smoke test — NOT part of the automated oracle.",
+        "evidence": "Not referenced by any package.json script (test cmd is `vitest`, which runs only __tests__/); no CI workflow exists at the SHA (.github/workflows absent); the script uses $RANDOM, emits no assertions/exit codes, and asks a human to eyeball the terminal for corruption ('If you see corrupted characters, the issue persists'). scripts/README.md documents it under 'Development Scripts'. Its deterministic automated counterpart is __tests__/terminal-cleanup.test.ts, which IS inventoried."
+      }
+    ],
     "expected": {
       "testFiles": [
         "__tests__/InkRenderer.test.ts",
