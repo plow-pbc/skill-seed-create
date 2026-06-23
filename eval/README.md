@@ -11,6 +11,14 @@ eval/
     load-config.mjs        # Chunk 1: load/validate a target config; --verify anchors + checks the manifest
     baseline.sh            # Chunk 2: clone@SHA -> --verify gate -> container O build+test -> baseline.json
     emit-baseline.mjs      # Chunk 2: parse vitest report + manifest cross-check -> baseline.json (loud abort)
+    lib.sh                 # Chunk 2: shared shell helpers (log/abort/saferm/cfg/require_cmd)
+    strip-oracle.mjs       # Chunk 3: manifest-driven oracle strip of the capture workspace
+    assert-stripped.mjs    # Chunk 3: prove zero oracle artifacts survive; package.json retained
+    cook-tool-guard.mjs    # Chunk 3: PreToolUse blindness gate (file tools->workspace, Bash->net-off C)
+    assert-blindness.mjs   # Chunk 3: POSITIVE proof the guard denies every route to the oracle
+    capture-build-c.sh     # Chunk 3: build container C; prove network-off + filesystem blindness
+    capture-run-cook.sh    # Chunk 3: run the fresh author-creator cook (3-axis confined) to DRAFT
+    cook-transcript-summarize.mjs  # Chunk 3: stream-json transcript -> readable + tool log
   targets/
     oh-my-logo/
       config.json          # source pin (repo+SHA), base image, install/build/test cmds, devDeps,
@@ -76,6 +84,56 @@ failed). `baseline.json` records the failure even when aborting.
 Outputs under `runs/run-<id>/`: `baseline.json`, `clone.log`, `verify.log`, `container.log`, and
 the `workspace/` checkout. Established baseline for oh-my-logo @ v0.5.0: **127/127 green**.
 
+## Capture — THREE-AXIS blindness (Chunk 3)
+The top invariant: the seed must be created without the oracle. Blindness has **three axes**, all
+enforced and all proven positively:
+1. **Network** — the capture runs against a `--network none` container; both target-recovery paths
+   (`git clone`, `npm install`/`npm view`) are proven blocked.
+2. **Filesystem** — the cook's file tools (Read/Glob/Grep) are hook-confined to a **single stripped
+   workspace**; any escape (absolute path, `..`, symlink, the oracle manifest) is **denied**.
+3. **Agent prior-knowledge** — the cook is a **separate, fresh** agent given no manifest, no test
+   names/counts; whoever builds the harness (and thus reads `config.json`) is NOT the cook.
+
+```bash
+harness/capture-build-c.sh [target] [run-id]   # build container C + PROVE all confinement axes
+harness/capture-run-cook.sh <run-id>           # run the fresh author-creator cook to DRAFT
+```
+**`capture-build-c.sh`** clones @ SHA on the host, runs the **manifest-driven oracle strip**
+(`strip-oracle.mjs` removes every oracle glob + the lockfile; `assert-stripped.mjs` proves zero
+oracle artifacts survive and `package.json` is retained → `strip-manifest.json`), builds a
+**derived image** (pinned slim + git; build-time network only, no new base pull), runs **container
+C with `--network none`**, and produces TWO positive proofs:
+- `blocked-egress.log` — from inside C, `git clone` the repo AND `npm install`/`npm view` the
+  package both **blocked** (network axis);
+- `blindness-proof.json` + `fs-blindness.log` — `assert-blindness.mjs` drives the **real** cook
+  tool-guard with crafted events and proves every route to the oracle is **denied** (Read of an
+  oracle test file / the manifest / a `..` or symlink escape; Glob/Grep enumeration of tests) while
+  legitimate in-workspace study is **allowed**, plus that the workspace holds **zero** oracle
+  artifacts (filesystem axis). The build **aborts** if any case fails.
+
+C is left running so the cook can `docker exec` into it.
+
+**`capture-run-cook.sh`** runs the **author-creator cook** = a headless `claude -p` on the host
+(inference via host OAuth) under a deny-by-default PreToolUse hook
+(`cook-tool-guard.mjs`, matcher `*` so it fires on **every** tool — the prior bug was a Bash-only
+matcher that let Read/Glob/Grep reach the oracle):
+- **file tools** (Read/Glob/Grep) are confined to the stripped workspace (resolves absolute/`..`/
+  symlink paths; denies escapes);
+- **Bash** is confined to `docker exec <net-off C>` (deny host shell / container-escape verbs);
+- WebFetch/WebSearch/Agent/Task/Write/Edit are withheld at launch.
+
+The cook runs with `cwd = the stripped workspace`, studies it, runs the **seed-create** skill,
+answers the **fixed interview contract** (recorded to `interview-contract.md`, derived only from
+non-oracle materials), and **stops at `SEEDCREATE_RESULT=DRAFT`** (no harden loop). The seed
+(SEED.md + README.md) is written to `runs/run-<id>/seed/` via `docker exec` into `/seed` and
+git-init'd by the harness. The hook is scoped to the cook's `--settings` only — it does NOT affect
+the harness shell (the harness still clones/builds normally; this scoping is itself the scope proof).
+
+Run-record outputs (under `runs/run-<id>/`): `capture-workspace/` (stripped), `strip-manifest.json`,
+`blocked-egress.log`, `blindness-proof.json`, `fs-blindness.log`, `interview-contract.md`, `seed/`,
+`cook-transcript.jsonl`, `cook-readable.md`, `cook-tool-log.txt`.
+
 ## Scope boundary
 Chunk 1 produces the config + loader. Chunk 2 proves the pin builds and establishes the green
-count. Chunks 3–5 (capture / rebuild / score) and Chunk 6 (end-to-end run record) follow.
+count. Chunk 3 captures the seed under network-off blindness. Chunks 4–5 (rebuild / score) and
+Chunk 6 (end-to-end run record) follow.
