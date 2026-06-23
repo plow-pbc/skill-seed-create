@@ -21,7 +21,7 @@
 //
 // Exit codes: 0 = ok; 1 = invalid config / missing fields; 2 = verification mismatch.
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve, basename } from 'node:path';
