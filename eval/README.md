@@ -235,8 +235,31 @@ First measured run (`runs/run-s1`, rebuild `run-r2`): **fidelity 16/127 (12.6%)*
 number is the honest first signal of a description-only seed; classification was **not** tuned to
 flatter it (a bug that mis-binned 17 assertions as build_failure was fixed *toward* honesty).
 
+## End-to-end loop — one command, one canonical run-id (Chunk 6)
+```bash
+harness/run-eval.sh [target] [run-id]    # e.g. run-eval.sh oh-my-logo e2
+```
+`run-eval.sh` runs the whole loop — **baseline → capture → rebuild → score** — under a SINGLE
+canonical `run-<id>/`, threading that id through every stage script (resolving the run-id scatter of
+Chunks 2–5). Stages run **sequentially**, and each stage's heavy intermediates (the baseline clone +
+node_modules, the capture container, the vendored node_modules + R, the scorer clone + node_modules)
+are **cleaned before the next**, so peak disk ≈ one stage (~200 MB). It **fails clearly**: baseline
+not green → abort; any stage's loud abort propagates. `emit-summary.mjs` writes `summary.md`.
+
+The complete record `runs/run-<id>/` contains: `baseline.json`, the `seed/`, container + egress logs
+(`blocked-egress.log`, `rebuild-egress.log`), the blindness/strip/vendor proofs (`fs-blindness.log`,
+`strip-manifest.json`, `rebuild-blindness.log`, `vendor/vendor-listing.txt`, `vendor-fulltree-scan.log`,
+`seed-collect.json`, `rebuilt-collect.json`), **both** cook transcripts + tool logs (`cook-*` and
+`rebuild-*`), the rebuilt artifact (`rebuilt/`), `fidelity.json`, and `summary.md`. (Run records are
+gitignored — reproducible by re-running.)
+
+A representative run (`run-e2`): baseline **127/127**, seed 4 files / 7.7 KiB, rebuild **built** (7
+src files), fidelity **27/127 (21.3%)** — 100 assertion_failure, 0 import/build/setup/harness; binding
+proven (bound src byte-identical to the rebuilt artifact, run ≠ 127/127). The number varies run to run
+(capture/rebuild are non-deterministic — a smoke signal, not decision-grade; multi-run averaging is
+deferred). Wall time ~17 min (two confined `claude -p` cook runs dominate).
+
 ## Scope boundary
-Chunk 1 produces the config + loader. Chunk 2 proves the pin builds and establishes the green
-count. Chunk 3 captures the seed under network-off blindness. Chunk 4 blind-rebuilds it in a
-vendored-deps, net-off clean room. Chunk 5 scores the rebuild against the oracle into classified
-fidelity. Chunk 6 (end-to-end run record) follows.
+Chunk 1 config + loader · Chunk 2 baseline (green at the pin) · Chunk 3 capture under three-axis
+network-off blindness · Chunk 4 vendored-deps net-off blind rebuild · Chunk 5 classified scorer ·
+Chunk 6 one-command end-to-end loop + auditable run record. The v1 loop turns end-to-end, auditably.

@@ -16,7 +16,8 @@
 // Exit: 0 wrote fidelity.json; 2 reference (oracle env) not green / cross-check fail
 //       (the fidelity number would be invalid); 4 no/unusable reports (harness).
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { loadConfig } from './load-config.mjs';
 
@@ -123,13 +124,27 @@ for (const f of refDiscovered) {
   perFile.push({ file: f, refCount, passed, gaps: refCount - passed, classes: fileClasses });
 }
 
-// ---- binding proof: the BOUND src is the REBUILD, not the original ---------
+// ---- binding proof: the BOUND src == the REBUILT artifact (CONTENT-based) ----
+// A filelist comparison gives a false negative when a faithful rebuild reconstructs
+// the SAME filenames as the original. The robust proof: the src/ the scorer actually
+// ran is byte-identical to the rebuilt artifact (runs/<id>/rebuilt/src) and the run is
+// NOT a perfect 127/127 (which only the unmodified original yields).
 const boundSrc = join(workspace, mount);
-const stdoutPresent = existsSync(join(boundSrc, 'utils', 'stdout.ts'));   // ORIGINAL had this
-const colorsPresent = existsSync(join(boundSrc, 'utils', 'colors.ts'));   // REBUILD-only marker
+const rebuiltSrc = join(rebuildDir, 'rebuilt', mount);
+function fileMap(root) {
+  const m = {};
+  const walk = (d, base = root) => { if (!existsSync(d)) return; for (const e of readdirSync(d, { withFileTypes: true })) { const f = join(d, e.name); if (e.isDirectory()) walk(f, base); else m[f.slice(base.length + 1)] = createHash('sha256').update(readFileSync(f)).digest('hex'); } };
+  walk(root);
+  return m;
+}
+const boundMap = fileMap(boundSrc), rebuiltMap = fileMap(rebuiltSrc);
+const boundKeys = Object.keys(boundMap).sort(), rebuiltKeys = Object.keys(rebuiltMap).sort();
+const boundEqualsRebuilt = boundKeys.length > 0 && JSON.stringify(boundKeys) === JSON.stringify(rebuiltKeys)
+  && boundKeys.every((k) => boundMap[k] === rebuiltMap[k]);
+const fidelityNotPerfect = passedTotal < N;        // only the unmodified original scores N/N
+const bindingProven = boundEqualsRebuilt && fidelityNotPerfect;
 const originalFiles = existsSync(join(runDir, 'original-src-filelist.txt')) ? readFileSync(join(runDir, 'original-src-filelist.txt'), 'utf8').trim().split('\n') : [];
 const boundFiles = existsSync(join(runDir, 'bound-src-filelist.txt')) ? readFileSync(join(runDir, 'bound-src-filelist.txt'), 'utf8').trim().split('\n') : [];
-const bindingProven = JSON.stringify(originalFiles) !== JSON.stringify(boundFiles); // surfaces differ => swapped
 
 // Per spec §Metrics: only import/assertion are genuine SEED gaps; setup/harness
 // indict the HARNESS; build_failure (rebuilt code won't transpile) is a RECONSTRUCTION
@@ -152,10 +167,11 @@ const out = {
   rebuildBuildDefects,    // build_failure (rebuilt code won't transpile — reconstruction defect)
   bindingProof: {
     bound: bindingProven,
-    note: 'bound src/ = REBUILT module surface (not original). Original had utils/stdout.ts; rebuild has utils/colors.ts.',
-    originalHadStdout: originalFiles.some((x) => /utils\/stdout\.ts$/.test(x)),
-    boundHasStdout: stdoutPresent,
-    boundHasColors: colorsPresent,
+    note: 'CONTENT proof: the src/ scored is byte-identical (sha256) to the rebuilt artifact, and the run is not a perfect N/N (only the unmodified original yields N/N).',
+    boundEqualsRebuilt: boundEqualsRebuilt,
+    fidelityNotPerfect,
+    boundFileCount: boundKeys.length,
+    rebuiltFileCount: rebuiltKeys.length,
     originalSrcFiles: originalFiles,
     boundSrcFiles: boundFiles,
   },
@@ -170,7 +186,7 @@ console.log(`[fidelity] FIDELITY: ${passedTotal}/${N} (${out.fidelity.pct}%)`);
 for (const c of CLASSES) console.log(`  ${c}: ${byClass[c]}`);
 console.log(`  (genuine seed gaps = import+assertion = ${genuineSeedGaps}; harness-indicting = ${harnessIndicting})`);
 console.log(`[fidelity] accounting: passed ${passedTotal} + failures ${sumClasses} = ${passedTotal + sumClasses} (must equal N=${N})`);
-console.log(`[fidelity] binding proven (rebuilt src bound, not original): ${bindingProven} | boundHasStdout=${stdoutPresent} boundHasColors=${colorsPresent}`);
+console.log(`[fidelity] binding proven (rebuilt src bound, not original): ${bindingProven} | boundEqualsRebuilt=${boundEqualsRebuilt} fidelityNotPerfect=${fidelityNotPerfect}`);
 if (passedTotal + sumClasses !== N) console.error('[fidelity] WARNING: accounting != N — some tests unattributed (see perFile).');
 console.log(`[fidelity] fidelity.json written to ${runDir}`);
 process.exit(0);
