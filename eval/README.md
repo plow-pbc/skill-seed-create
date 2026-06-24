@@ -164,7 +164,41 @@ Run-record outputs (under `runs/run-<id>/`): `capture-workspace/` (stripped + re
 `fs-blindness.log`, `interview-contract.md`, `seed/`, `cook-transcript.jsonl`, `cook-readable.md`,
 `cook-tool-log.txt`.
 
+## Rebuild — clean-room, vendored-deps, FULLY net-off (Chunk 4)
+The blind rebuild reconstructs the target from the **seed alone** and builds it with the target's
+deps but WITHOUT the target itself. Blindness here is by **construction** (the target isn't present)
+plus the same confined-cook discipline as capture.
+```bash
+harness/vendor-deps.sh        [target] <run-id>            # net-ON prep: vendored deps, target excluded
+harness/capture-build-r.sh    <seed-path> [run-id] [target] # source-strip seed + net-off R + proofs
+harness/capture-run-rebuild.sh <run-id> [target]            # fresh oracle-naive rebuild cook
+```
+- **Source-strip (`strip-seed-source.mjs`, head-chef Option 1):** before R, strip any bundled
+  implementation source from a COPY of the seed — R receives ONLY `SEED.md` + `README.md` + scripts/docs
+  (no-op for a description-only seed; refuses symlinks; requires both SEED.md and README.md). Records
+  `seed-as-received.json`. This makes fidelity measure whether the **description** reconstructs the
+  capability.
+- **Vendored deps (`vendor-deps.sh`, net ON):** `git clone @SHA` then `npm ci` against the pinned
+  `package-lock.json` → a `node_modules` of deps+devDeps. The target is the lockfile **root**, so it
+  is **absent by construction** (asserted). Writes `vendor/vendor-listing.txt` (target ABSENT + sample
+  deps present). Allowlist-by-construction beats a filtering proxy: nothing to mis-configure.
+- **Container R (`capture-build-r.sh`, `--network none`):** mounts ONLY the stripped seed + vendored
+  `node_modules`. Positive proofs: `rebuild-egress.log` (target `git clone`/`npm install`/`npm view`
+  all BLOCKED; vendored deps resolve OFFLINE) and `rebuild-blindness.log` (oracle denied, net-off,
+  target absent from vendor, seed description-only — drives the FIXED guard).
+- **Rebuild cook (`capture-run-rebuild.sh`):** a FRESH, ORACLE-NAIVE `claude -p` confined by
+  `cook-tool-guard.mjs` (file tools → workspace; Bash → one `docker exec` into net-off R). It hydrates
+  the seed, reconstructs `src/` from the prose, and builds offline against the vendored deps. The
+  rebuilt artifact (or captured build failure) is recorded at the **moduleSurface mount**
+  (`runs/run-<id>/rebuilt/`) for Chunk 5, with `rebuild-build.log` + `rebuild-result.json`.
+
+**Expected outcome is LOW/partial fidelity** — a description-only seed makes faithful reconstruction
+hard, and the API surface rarely matches the oracle's import paths exactly. That is honest strict
+signal (Chunk 5 classifies it: build/test_setup/import/assertion/harness); the rebuild is **never**
+tuned toward the oracle.
+
 ## Scope boundary
 Chunk 1 produces the config + loader. Chunk 2 proves the pin builds and establishes the green
-count. Chunk 3 captures the seed under network-off blindness. Chunks 4–5 (rebuild / score) and
-Chunk 6 (end-to-end run record) follow.
+count. Chunk 3 captures the seed under network-off blindness. Chunk 4 blind-rebuilds it in a
+vendored-deps, net-off clean room. Chunk 5 (classified scorer) and Chunk 6 (end-to-end run record)
+follow.
