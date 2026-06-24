@@ -100,45 +100,67 @@ function globPrefix(s) {
   return i === -1 ? String(s) : String(s).slice(0, i);
 }
 
-// Return EVERY path the call could read/write, as strings to feed to within().
-// Critical: for Glob/Grep we must resolve EVERY path-bearing param — `path`,
-// Glob's `pattern`, and Grep's `glob` — relative to the effective base (path||cwd),
-// so a relative `../` escape in the pattern/glob is caught (prior bypass).
-function filePaths(t, inp) {
+// Expand `{a,b,c}` brace alternatives (one or more, nested) into concrete strings.
+// Mirrors strip-oracle.mjs; bounded recursion. A glob param escapes if ANY branch does.
+function expandBraces(p) {
+  const i = p.indexOf('{');
+  if (i === -1) return [p];
+  let d = 0, j = i;
+  for (; j < p.length; j++) { if (p[j] === '{') d++; else if (p[j] === '}' && --d === 0) break; }
+  if (j >= p.length) return [p]; // unbalanced -> treat literally
+  const pre = p.slice(0, i), post = p.slice(j + 1), opts = p.slice(i + 1, j).split(',');
+  return opts.flatMap((o) => expandBraces(pre + o + post));
+}
+
+// Does a Glob/Grep pattern/glob param escape the workspace in ANY encoding?
+// Covers: literal `..`, brace branches `{../x,y}`, and char-class-encoded `..`
+// (`[.][.]/` etc.). A workspace search never needs `..` — deny any branch that
+// can resolve to `..` / absolute-outside / outside-workspace.
+function patternEscapes(param, base, readOnly) {
+  for (let cand of expandBraces(String(param))) {
+    // a char-class that can contain `.` or `/` could encode `..` or a separator -> reject
+    if (/\[[^\]]*[.\/][^\]]*\]/.test(cand)) return true;
+    cand = cand.replace(/\[([^\]])\]/g, '$1'); // decode single-char classes (`[a]`->`a`)
+    if (/(^|\/)\.\.(\/|$)/.test(cand)) return true; // any `..` path segment
+    const pref = globPrefix(cand);
+    const abs = isAbsolute(pref) ? pref : join(base, pref);
+    if (!within(abs, readOnly)) return true;
+  }
+  return false;
+}
+
+// Direct (non-glob) path params for each file tool.
+function directPaths(t, inp) {
   const out = [];
   const push = (v) => { if (typeof v === 'string' && v.length) out.push(v); };
   if (t === 'Read' || t === 'Edit' || t === 'Write') push(inp.file_path);
   else if (t === 'NotebookEdit') push(inp.notebook_path);
   else if (t === 'LS') push(inp.path);
-  else if (t === 'Glob' || t === 'Grep') {
-    // effective base for relative patterns: inp.path if given, else cwd
-    const rawBase = (typeof inp.path === 'string' && inp.path) ? inp.path : cwd;
-    const base = isAbsolute(rawBase) ? rawBase : join(cwd, rawBase);
-    push(inp.path);                                   // the search root itself
-    const pats = [];
-    if (t === 'Glob' && typeof inp.pattern === 'string') pats.push(inp.pattern);
-    if (t === 'Grep' && typeof inp.glob === 'string') pats.push(inp.glob); // Grep's path filter
-    for (const p of pats) {
-      const pref = globPrefix(p);
-      out.push(isAbsolute(pref) ? pref : join(base, pref));
-    }
-    if (out.length === 0) out.push(cwd);              // no params => searches cwd
-  }
+  else if (t === 'Glob' || t === 'Grep') push(inp.path); // the search root itself
   return out;
 }
 
 if (FILE_TOOLS.has(tool)) {
   const readOnly = (tool === 'Read' || tool === 'Glob' || tool === 'Grep' || tool === 'LS');
-  const paths = filePaths(tool, input);
-  const escapes = paths.filter((p) => !within(p, readOnly));
+  // (a) direct path params must be inside the workspace (realResolve handles abs/../symlink)
+  const escapes = directPaths(tool, input).filter((p) => !within(p, readOnly));
+  // (b) Glob/Grep glob params must not escape under brace/char-class expansion
+  if (tool === 'Glob' || tool === 'Grep') {
+    const rawBase = (typeof input.path === 'string' && input.path) ? input.path : cwd;
+    const base = isAbsolute(rawBase) ? rawBase : join(cwd, rawBase);
+    const pats = [];
+    if (tool === 'Glob' && typeof input.pattern === 'string') pats.push(input.pattern);
+    if (tool === 'Grep' && typeof input.glob === 'string') pats.push(input.glob);
+    for (const p of pats) if (patternEscapes(p, base, readOnly)) escapes.push(p);
+  }
   if (escapes.length) {
     decide('deny',
       `BLINDNESS GATE (filesystem): ${tool} target escapes the stripped workspace: ` +
-        `${escapes.map((p) => `"${p}"`).join(', ')}. The author-creator may only read the single ` +
-        `oracle-stripped workspace at ${WS || '(unset)'} (plus the seed-create skill's own docs). ` +
-        `The held-out test suite, runner config, lockfile, and the oracle manifest are NOT readable.`);
+        `${escapes.map((p) => `"${p}"`).join(', ')}. The cook may only read the single ` +
+        `oracle-stripped workspace at ${WS || '(unset)'} (plus the allowed skill docs). No path/glob ` +
+        `may resolve via absolute, "..", brace branch, or char-class to outside it.`);
   }
-  decide('allow', `confined: ${tool} stays inside the stripped workspace${readOnly && READ_ROOTS.length ? ' / allowed skill docs' : ''}`);
+  decide('allow', `confined: ${tool} stays inside the workspace${readOnly && READ_ROOTS.length ? ' / allowed skill docs' : ''}`);
 }
 
 // ---- network-capable tools: deny (defense in depth) ------------------------

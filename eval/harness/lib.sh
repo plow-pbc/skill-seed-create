@@ -31,10 +31,14 @@ require_cmd() {
   for c in "$@"; do command -v "$c" >/dev/null 2>&1 || abort "required command not found: $c"; done
 }
 
-# skill_read_root: realpath of the seed-create skill's install dir. The cook is
-# READ-allowed here (its own oracle-free docs: SKILL.md/SEED.md/README.md) so it
-# can author faithfully; this dir is target-agnostic and holds NO oracle. Empty if
+# skill_install_root <name>: realpath of a skill's install dir. A cook is READ-allowed
+# here (the skill's own oracle-free docs: SKILL.md/SEED.md/README.md) so it can follow
+# the procedure faithfully; the dir is target-agnostic and holds NO oracle. Empty if
 # the skill isn't installed at the standard path.
-skill_read_root() {
-  node -e "try{console.log(require('fs').realpathSync(require('os').homedir()+'/.claude/skills/seed-create'))}catch(e){}"
+skill_install_root() {
+  local name="${1:?skill_install_root <name>}"
+  node -e "try{console.log(require('fs').realpathSync(require('os').homedir()+'/.claude/skills/'+process.argv[1]))}catch(e){}" "$name"
 }
+
+# skill_read_root: back-compat alias for the author-creator (seed-create) carve-out.
+skill_read_root() { skill_install_root seed-create; }

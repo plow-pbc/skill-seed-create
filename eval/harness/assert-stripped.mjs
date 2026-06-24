@@ -70,8 +70,12 @@ const survived = [...new Set([...survivedByGlob, ...survivedExact])].sort();
 const packageJsonPresent = files.includes('package.json'); // capability context must remain
 
 // ---- residual oracle-metadata leak scan (review cycle 2, IMPORTANT 3) -------
-// Retained prose docs must NOT enumerate the test inventory (names / counts /
-// coverage). strip-oracle.mjs redacts these; here we PROVE none survive.
+// SCOPE OF THE CLAIM (guardfix2): what is withheld = test BODIES (the test files
+// themselves), test-file ENUMERATION, and test COUNTS/coverage goals — in PROSE docs
+// (.md/.txt). What is RETAINED as capability context = package.json and biome.json
+// (deps/bin/scripts/format config), even though they reference a test runner
+// (`vitest`, `test:coverage`, `__tests__/**`): a runner existing is not the oracle.
+// So this scan covers prose docs only; package.json/biome.json are deliberately kept.
 const testBasenames = (cfg.oracle?.expected?.testFiles || []).map((t) => t.split('/').pop()).filter(Boolean);
 const LEAK_PATTERNS = [
   { name: '__tests__ reference', re: /__tests__/i },
@@ -123,5 +127,5 @@ if (leaks.length > 0) {
   console.error(`\n[strip] ABORT: ${leaks.length} oracle-metadata leak(s) (test names/counts/coverage) survived in retained docs — prior-knowledge blindness compromised.`);
   process.exit(5);
 }
-console.log(`\n[strip] OK: no oracle artifacts, no metadata leaks; package.json retained. strip-manifest.json written.`);
+console.log(`\n[strip] OK: oracle test bodies/enumeration/counts withheld (incl. redacted prose); package.json + biome.json retained as capability context (a runner reference is not the oracle). strip-manifest.json written.`);
 process.exit(0);

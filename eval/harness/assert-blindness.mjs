@@ -146,6 +146,14 @@ check('filesystem', 'BYPASS: Grep "glob" param ".." escape',
   { tool_name: 'Grep', cwd, tool_input: { pattern: 'oracle', glob: '../../../targets/**/config.json' } }, 'deny');
 check('filesystem', 'BYPASS: Grep "path" param ".." escape',
   { tool_name: 'Grep', cwd, tool_input: { pattern: 'x', path: '../../..' } }, 'deny');
+check('filesystem', 'BYPASS: Glob BRACE branch escape ("{../../targets/...,src/**}")',
+  { tool_name: 'Glob', cwd, tool_input: { pattern: '{../../targets/oh-my-logo/config.json,src/**/*.ts}' } }, 'deny');
+check('filesystem', 'BYPASS: Glob CHAR-CLASS-encoded ".." ("[.][.]/...")',
+  { tool_name: 'Glob', cwd, tool_input: { pattern: '[.][.]/[.][.]/targets/oh-my-logo/config.json' } }, 'deny');
+check('filesystem', 'BYPASS: Grep "glob" BRACE branch escape',
+  { tool_name: 'Grep', cwd, tool_input: { pattern: 'x', glob: '{../../../targets/**,src/**}' } }, 'deny');
+check('filesystem', 'legit Glob brace within workspace ("{src,examples}/**/*.ts")',
+  { tool_name: 'Glob', cwd, tool_input: { pattern: '{src,examples}/**/*.ts' } }, 'allow');
 check('scope', 'BYPASS: lowercase/aliased tool name ("read")',
   { tool_name: 'read', cwd, tool_input: { file_path: '/etc/hostname' } }, 'deny');
 check('scope', 'BYPASS: unknown tool name ("MultiEdit")',

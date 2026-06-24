@@ -135,21 +135,29 @@ deny-by-default and airtight against the bypasses an earlier prefix-only version
   metacharacter (`; | & < > ( ) $` backtick, newline) OUTSIDE single quotes is rejected, so
   `… ; curl`, `… < hostfile`, `"$(…)"`, and pipes-to-host are all blocked. Pipes/`&&` INSIDE the
   single-quoted `sh -lc '…'` script (which runs in the container) are fine.
-- **Glob/Grep** resolve EVERY path-bearing param (`path`, Glob `pattern`, Grep `glob`) relative to
-  cwd and canonicalize, so a relative `../**` escape is denied — not just absolute paths.
+- **Glob/Grep** resolve EVERY path-bearing param (`path`, Glob `pattern`, Grep `glob`) and validate
+  under **brace + char-class expansion**: any branch resolving via `..`, absolute, `{../x,…}`, or
+  `[.][.]/` to outside the workspace is denied — not just literal/absolute prefixes.
 - **deny-by-default tool allow-list**: unknown / aliased / case-variant tools (`read`, `MultiEdit`)
   are denied; only file tools (workspace-confined), Bash (docker-exec-only), and
   Skill/TodoWrite/Task*/ToolSearch pass.
 - The cook authors the seed with the **Write tool** (hook-confined to the workspace, into
   `seed-output/`) — heredoc-via-`docker exec` is intentionally impossible under the metachar rule.
-- **Prior-knowledge redaction:** `strip-oracle.mjs` redacts oracle metadata (test file names,
-  counts, coverage goals) from retained prose docs (`CLAUDE.md`/`README*`); `assert-stripped.mjs`
-  fails if any survives — so "no test names/counts" is enforced, not just claimed.
+- **Seed symlink refusal:** the host REFUSES any symlink anywhere in the seed (`find -type l` →
+  abort) and copies without dereferencing — a cook cannot `ln -s` the oracle into its output and have
+  the host resolve it. Seed validation requires BOTH `SEED.md` and `README.md`.
+- **Prior-knowledge redaction (scoped claim):** what is withheld = test BODIES, test-file
+  ENUMERATION, and COUNTS/coverage goals — redacted by `strip-oracle.mjs` from retained PROSE docs
+  (`CLAUDE.md`/`README*`), enforced by `assert-stripped.mjs`. What is RETAINED as capability context
+  = `package.json` and `biome.json` (deps/bin/scripts/format config), even though they reference a
+  test runner — *a runner existing is not the oracle*.
 - **No silent accept:** `capture-run-cook.sh` aborts loudly on non-zero cook exit, a missing
-  `SEEDCREATE_RESULT=DRAFT` in the cook's final result, an empty seed, or a failed copy/commit.
+  `SEEDCREATE_RESULT=DRAFT` in the cook's final result, an empty seed, a seed symlink, or a failed
+  copy/commit.
 
-The former bypass vectors are now regression-covered in `assert-blindness.mjs` (a green proof MEANS
-they are blocked).
+The former bypass vectors (host-chain, stdin redirect, `$()`, pipe-to-host, relative/brace/char-class
+glob escapes, aliased tools, seed symlinks) are regression-covered in the proof suites (a green proof
+MEANS they are blocked).
 
 Run-record outputs (under `runs/run-<id>/`): `capture-workspace/` (stripped + redacted),
 `strip-manifest.json` (incl. `oracleMetadataLeaks: []`), `blocked-egress.log`, `blindness-proof.json`,

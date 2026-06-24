@@ -34,6 +34,21 @@ const SOURCE_EXT = new Set([
   '.py', '.go', '.rs', '.rb', '.java', '.c', '.h', '.cpp', '.cc', '.css', '.scss', '.vue', '.svelte',
 ]);
 
+// SYMLINK GUARD (guardfix2 CRITICAL): a seed must contain only regular files/dirs.
+// A symlink could point at the oracle on a host that has it (the rebuild copy/cp would
+// deref or carry it). Refuse the whole seed if ANY symlink is present.
+function assertNoSymlinks(dir) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === '.git') continue;
+    const full = join(dir, e.name);
+    if (e.isSymbolicLink()) {
+      console.error(`[seed-strip] ABORT: symlink in seed — blindness breach: ${full}`);
+      process.exit(7);
+    }
+    if (e.isDirectory()) assertNoSymlinks(full);
+  }
+}
+
 function walk(dir, base = dir, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name === '.git') continue;
@@ -44,6 +59,7 @@ function walk(dir, base = dir, out = []) {
   return out;
 }
 
+assertNoSymlinks(seedDir);          // refuse a symlinked seed before doing anything
 const before = walk(seedDir).sort();
 const kept = [];
 const stripped = [];
@@ -84,6 +100,7 @@ const record = {
   filesStripped: stripped,        // bundled implementation source removed
   filesReceivedByR: after,        // EXACTLY what container R gets
   seedMdPresent,
+  readmePresent: after.includes('README.md'),
   sourceFilesRemaining: after.filter((f) => SOURCE_EXT.has(extname(f).toLowerCase()) && !KEEP_EXT.has(extname(f).toLowerCase())),
 };
 writeFileSync(join(runDir, 'seed-as-received.json'), JSON.stringify(record, null, 2) + '\n');
@@ -91,15 +108,15 @@ writeFileSync(join(runDir, 'seed-as-received.json'), JSON.stringify(record, null
 console.log(`[seed-strip] before: ${before.length} file(s); stripped ${stripped.length} source file(s).`);
 for (const f of stripped) console.log(`  STRIPPED (source): ${f}`);
 console.log(`[seed-strip] R receives ${after.length} file(s): ${after.join(', ') || '(none)'}`);
-console.log(`[seed-strip] SEED.md present: ${seedMdPresent}`);
+console.log(`[seed-strip] SEED.md present: ${seedMdPresent} | README.md present: ${record.readmePresent}`);
 
 if (record.sourceFilesRemaining.length) {
   console.error(`[seed-strip] ABORT: source files survived: ${record.sourceFilesRemaining.join(', ')}`);
   process.exit(7);
 }
-if (!seedMdPresent) {
-  console.error('[seed-strip] ABORT: no SEED.md remains — not a usable seed.');
+if (!seedMdPresent || !record.readmePresent) {
+  console.error('[seed-strip] ABORT: a SEED repo requires BOTH SEED.md and README.md.');
   process.exit(7);
 }
-console.log('[seed-strip] OK: R receives description-only seed (SEED.md + README + scripts/docs).');
+console.log('[seed-strip] OK: R receives description-only seed (SEED.md + README.md + scripts/docs); no symlinks.');
 process.exit(0);

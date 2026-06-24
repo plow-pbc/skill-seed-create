@@ -19,7 +19,7 @@
 // Exit: 0 all proven; 6 a confinement/vendor case FAILED.
 
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, existsSync, readdirSync, statSync, symlinkSync, rmSync } from 'node:fs';
+import { writeFileSync, existsSync, readdirSync, statSync, symlinkSync, rmSync, lstatSync } from 'node:fs';
 import { join, dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './load-config.mjs';
@@ -118,6 +118,8 @@ const seedFiles = existsSync(WS) ? walkNoNM(WS) : [];
 const SRC_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 const seedSource = seedFiles.filter((f) => SRC_EXT.has(extname(f).toLowerCase()));
 state('seedState', 'SEED.md present in the seed R received', seedFiles.includes('SEED.md'));
+state('seedState', 'README.md present in the seed R received', seedFiles.includes('README.md'));
+state('seedState', 'NO symlink in the seed (no out-of-tree resolution)', !seedFiles.some((f) => { try { return lstatSync(join(WS, f)).isSymbolicLink(); } catch { return false; } }));
 state('seedState', 'NO bundled implementation source in the seed (description-only)', seedSource.length === 0);
 results.seedState.push({ label: `seed files R received: ${seedFiles.join(', ') || '(none)'}`, ok: true, info: true });
 

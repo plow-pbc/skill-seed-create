@@ -189,12 +189,24 @@ process.stdout.write(/SEEDCREATE_RESULT=DRAFT/.test(res)?"yes":"no");
 # (3) the cook must have actually written a seed
 [ -n "$(ls -A "$SEED_OUT_HOST" 2>/dev/null)" ] || abort "no seed written under $SEED_OUT_HOST — capture invalid."
 
+# (4) SYMLINK GUARD (review cycle 2, guardfix2 CRITICAL): the cook could `ln -s` the
+#     oracle into seed-output; the host copy would deref it and leak the oracle. REFUSE
+#     any symlink anywhere in the seed, and copy WITHOUT dereferencing.
+if find "$SEED_OUT_HOST" -type l 2>/dev/null | grep -q .; then
+  abort "BLINDNESS BREACH: symlink(s) in seed-output — refusing: $(find "$SEED_OUT_HOST" -type l)"
+fi
+
 # ---- harness finalize: copy the seed out of the workspace, then git-init -------
 # The cook authored the seed with the Write tool into the in-WORKSPACE seed-output
 # dir; the HOST (unconfined) copies it to the run's SEED_DIR. No container mount.
 log "copying seed $SEED_OUT_HOST -> $SEED_DIR ..."
 cp -R "$SEED_OUT_HOST/." "$SEED_DIR/" || abort "failed to copy seed out of the workspace — capture invalid."
-[ -f "$SEED_DIR/SEED.md" ] || abort "seed has no SEED.md — capture invalid."
+# Post-copy: assert NO symlink survived and the seed contract (SEED.md + README.md) holds.
+if find "$SEED_DIR" -type l 2>/dev/null | grep -q .; then
+  abort "BLINDNESS BREACH: symlink(s) in copied seed — refusing: $(find "$SEED_DIR" -type l)"
+fi
+[ -f "$SEED_DIR/SEED.md" ]   || abort "seed has no SEED.md — capture invalid."
+[ -f "$SEED_DIR/README.md" ] || abort "seed has no README.md — a SEED repo requires both SEED.md and README.md."
 
 # git-init the seed (local, no network) — fail loudly if it can't be committed
 if [ ! -d "$SEED_DIR/.git" ]; then
