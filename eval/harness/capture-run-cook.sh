@@ -169,7 +169,7 @@ set -e
 log "cook exit=$COOK_RC"
 
 # ---- extract a readable result + tool log from the stream-json transcript ----
-node "$EVAL_DIR/harness/cook-transcript-summarize.mjs" "$RUN_DIR/cook-transcript.jsonl" "$RUN_DIR" || true
+node "$EVAL_DIR/harness/cook-transcript-summarize.mjs" "$RUN_DIR/cook-transcript.jsonl" "$RUN_DIR" cook || true
 
 # ---- VALIDATE the capture — fail LOUDLY, no silent accept (review cycle 2, IMPORTANT 1) ----
 # (1) cook process must have exited cleanly

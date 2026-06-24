@@ -2,13 +2,16 @@
 // Summarize the cook's stream-json transcript (Chunk 3) into a readable transcript
 // + a tool log (every shell/tool call, to audit blindness). Best-effort parser.
 //
-// Usage: cook-transcript-summarize.mjs <transcript.jsonl> <runDir>
+// Usage: cook-transcript-summarize.mjs <transcript.jsonl> <runDir> [out-prefix]
+// out-prefix (default "cook") names the outputs <prefix>-readable.md / <prefix>-tool-log.txt
+// so the CAPTURE cook ("cook") and the REBUILD cook ("rebuild") never clobber each other.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const [jsonl, runDir] = process.argv.slice(2);
-if (!jsonl || !runDir) { console.error('usage: cook-transcript-summarize.mjs <jsonl> <runDir>'); process.exit(1); }
+const [jsonl, runDir, prefixArg] = process.argv.slice(2);
+if (!jsonl || !runDir) { console.error('usage: cook-transcript-summarize.mjs <jsonl> <runDir> [out-prefix]'); process.exit(1); }
+const prefix = prefixArg || 'cook';
 
 const lines = readFileSync(jsonl, 'utf8').split('\n').filter(Boolean);
 const readable = [];
@@ -45,6 +48,6 @@ for (const ln of lines) {
   }
 }
 
-writeFileSync(join(runDir, 'cook-readable.md'), `# Cook transcript (readable)\n\n${readable.join('\n\n')}\n`);
-writeFileSync(join(runDir, 'cook-tool-log.txt'), toolLog.join('\n') + '\n');
-console.log(`[cook] transcript: ${toolN} tool call(s); wrote cook-readable.md + cook-tool-log.txt`);
+writeFileSync(join(runDir, `${prefix}-readable.md`), `# ${prefix} transcript (readable)\n\n${readable.join('\n\n')}\n`);
+writeFileSync(join(runDir, `${prefix}-tool-log.txt`), toolLog.join('\n') + '\n');
+console.log(`[${prefix}] transcript: ${toolN} tool call(s); wrote ${prefix}-readable.md + ${prefix}-tool-log.txt`);

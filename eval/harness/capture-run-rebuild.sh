@@ -87,9 +87,8 @@ set +e
 COOK_RC=$?
 set -e
 log "rebuild cook exit=$COOK_RC"
-node "$EVAL_DIR/harness/cook-transcript-summarize.mjs" "$RUN_DIR/rebuild-transcript.jsonl" "$RUN_DIR" || true
-mv "$RUN_DIR/cook-readable.md" "$RUN_DIR/rebuild-readable.md" 2>/dev/null || true
-mv "$RUN_DIR/cook-tool-log.txt" "$RUN_DIR/rebuild-tool-log.txt" 2>/dev/null || true
+# prefix "rebuild" so the REBUILD cook's logs never clobber the CAPTURE cook's (cook-*)
+node "$EVAL_DIR/harness/cook-transcript-summarize.mjs" "$RUN_DIR/rebuild-transcript.jsonl" "$RUN_DIR" rebuild || true
 
 # ---- harness records the rebuilt artifact + a canonical build attempt -------
 # A failed build is a VALID outcome (classified by Chunk 5) — never abort on it.

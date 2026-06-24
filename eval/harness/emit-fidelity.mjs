@@ -146,6 +146,28 @@ const bindingProven = boundEqualsRebuilt && fidelityNotPerfect;
 const originalFiles = existsSync(join(runDir, 'original-src-filelist.txt')) ? readFileSync(join(runDir, 'original-src-filelist.txt'), 'utf8').trim().split('\n') : [];
 const boundFiles = existsSync(join(runDir, 'bound-src-filelist.txt')) ? readFileSync(join(runDir, 'bound-src-filelist.txt'), 'utf8').trim().split('\n') : [];
 
+// PERSIST the sha256 maps so the binding is independently auditable AFTER the scorer
+// workspace is cleaned (Fix 2). The scored src/ lives only in scorer-workspace (removed
+// by the orchestrator); this file is the durable evidence the rebuilt artifact was scored.
+writeFileSync(join(runDir, 'binding-hashes.json'), JSON.stringify({
+  schemaVersion: 1, mountPoint: mount,
+  scoredSrc: { root: boundSrc, sha256: boundMap },
+  rebuiltArtifact: { root: rebuiltSrc, sha256: rebuiltMap },
+  boundEqualsRebuilt, fidelityNotPerfect, bound: bindingProven,
+}, null, 2) + '\n');
+
+// FAIL-CLOSED (Fix 1): a failed binding means the number is meaningless — ABORT, do not
+// emit a fidelity figure. (The scored src wasn't provably the rebuilt artifact.)
+if (!bindingProven) {
+  writeFileSync(join(runDir, 'fidelity.json'), JSON.stringify({
+    schemaVersion: 1, target: cfg.name, error: 'binding_not_proven',
+    bindingProof: { bound: false, boundEqualsRebuilt, fidelityNotPerfect, boundFileCount: boundKeys.length, rebuiltFileCount: rebuiltKeys.length },
+    note: 'Scored src was NOT provably the rebuilt artifact (or the run scored a perfect N/N, implying the original ran). No fidelity number emitted.',
+  }, null, 2) + '\n');
+  console.error(`[fidelity] ABORT: binding NOT proven (boundEqualsRebuilt=${boundEqualsRebuilt}, fidelityNotPerfect=${fidelityNotPerfect}) — refusing to emit a fidelity number. See binding-hashes.json.`);
+  process.exit(3);
+}
+
 // Per spec §Metrics: only import/assertion are genuine SEED gaps; setup/harness
 // indict the HARNESS; build_failure (rebuilt code won't transpile) is a RECONSTRUCTION
 // defect — reported on its own, neither a behavior gap nor a harness fault.
@@ -172,6 +194,7 @@ const out = {
     fidelityNotPerfect,
     boundFileCount: boundKeys.length,
     rebuiltFileCount: rebuiltKeys.length,
+    hashManifest: 'binding-hashes.json',   // durable sha256 maps (auditable post-cleanup)
     originalSrcFiles: originalFiles,
     boundSrcFiles: boundFiles,
   },
