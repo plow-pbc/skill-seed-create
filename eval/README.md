@@ -197,8 +197,35 @@ hard, and the API surface rarely matches the oracle's import paths exactly. That
 signal (Chunk 5 classifies it: build/test_setup/import/assertion/harness); the rebuild is **never**
 tuned toward the oracle.
 
+## Scorer — classified fidelity (Chunk 5)
+The codified scorer runs the held-out **oracle** against the **rebuilt** artifact and emits
+`fidelity.json` = X/N + every failure tagged by class. The scorer MAY touch the oracle (it doesn't
+feed the seed).
+```bash
+harness/scorer.sh <rebuild-run-dir> [target] [score-run-id]   # e.g. scorer.sh runs/run-r2
+```
+- **Bind, don't edit:** clone the oracle @ pinned SHA, `--verify` it (8 files), then run vitest TWICE
+  in one container (`npm ci` @ pinned lockfile): **Run A** = ORIGINAL `src/` (must be N/N green —
+  validates the oracle env + gives per-file denominators), then swap **only `src/`** for the rebuilt
+  module surface and **Run B** = the unmodified oracle tests now resolving `../src/*.js` against the
+  rebuild. The swap (not test edits) is the binding; `original-src-filelist.txt` vs
+  `bound-src-filelist.txt` proves the rebuild was bound (not the original).
+- **STRICT (inherited from Chunk 2):** a skipped / not-collected oracle test against the rebuild is a
+  real GAP, never a pass. The discovered-vs-expected manifest cross-check must hold (8 files / N=127).
+- **`emit-fidelity.mjs` classifies every non-pass:** `import_failure` (module resolution fails —
+  API surface absent), `assertion_failure` (test ran, behavior differs), `build_failure` (rebuilt
+  src won't transpile), `test_setup_failure` (runner/devDeps/config), `harness_failure` (scorer
+  infra). Only import/assertion are genuine seed gaps; setup/harness indict the harness; build is a
+  reconstruction defect. Accounting is asserted: `passed + Σ failures == N`.
+
+First measured run (`runs/run-s1`, rebuild `run-r2`): **fidelity 16/127 (12.6%)** — `import_failure` 34
+(the whole `utils/stdout.test.ts`; the rebuild omitted `utils/stdout.ts` and added `utils/colors.ts`),
+`assertion_failure` 77 (behavior gaps despite a clean compile), build/test_setup/harness = 0. The low
+number is the honest first signal of a description-only seed; classification was **not** tuned to
+flatter it (a bug that mis-binned 17 assertions as build_failure was fixed *toward* honesty).
+
 ## Scope boundary
 Chunk 1 produces the config + loader. Chunk 2 proves the pin builds and establishes the green
 count. Chunk 3 captures the seed under network-off blindness. Chunk 4 blind-rebuilds it in a
-vendored-deps, net-off clean room. Chunk 5 (classified scorer) and Chunk 6 (end-to-end run record)
-follow.
+vendored-deps, net-off clean room. Chunk 5 scores the rebuild against the oracle into classified
+fidelity. Chunk 6 (end-to-end run record) follows.
