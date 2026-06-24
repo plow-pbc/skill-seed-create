@@ -151,6 +151,7 @@ if (FILE_TOOLS.has(tool)) {
     const pats = [];
     if (tool === 'Glob' && typeof input.pattern === 'string') pats.push(input.pattern);
     if (tool === 'Grep' && typeof input.glob === 'string') pats.push(input.glob);
+    if (tool === 'Grep' && typeof input.include === 'string') pats.push(input.include); // alt path-filter field
     for (const p of pats) if (patternEscapes(p, base, readOnly)) escapes.push(p);
   }
   if (escapes.length) {

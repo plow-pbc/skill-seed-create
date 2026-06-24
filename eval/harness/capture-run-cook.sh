@@ -195,6 +195,10 @@ process.stdout.write(/SEEDCREATE_RESULT=DRAFT/.test(res)?"yes":"no");
 if find "$SEED_OUT_HOST" -type l 2>/dev/null | grep -q .; then
   abort "BLINDNESS BREACH: symlink(s) in seed-output — refusing: $(find "$SEED_OUT_HOST" -type l)"
 fi
+# (5) HOST CONTROLS GIT (final-pass IMPORTANT): a cook could plant a .git/ (fake
+#     history, malicious hooks) in seed-output. Strip ANY cook-created .git so the
+#     host always re-inits and commits — never trust or reuse cook git state.
+find "$SEED_OUT_HOST" -type d -name .git -prune -exec rm -rf {} + 2>/dev/null || true
 
 # ---- harness finalize: copy the seed out of the workspace, then git-init -------
 # The cook authored the seed with the Write tool into the in-WORKSPACE seed-output
@@ -205,16 +209,16 @@ cp -R "$SEED_OUT_HOST/." "$SEED_DIR/" || abort "failed to copy seed out of the w
 if find "$SEED_DIR" -type l 2>/dev/null | grep -q .; then
   abort "BLINDNESS BREACH: symlink(s) in copied seed — refusing: $(find "$SEED_DIR" -type l)"
 fi
+find "$SEED_DIR" -type d -name .git -prune -exec rm -rf {} + 2>/dev/null || true  # belt-and-suspenders
 [ -f "$SEED_DIR/SEED.md" ]   || abort "seed has no SEED.md — capture invalid."
 [ -f "$SEED_DIR/README.md" ] || abort "seed has no README.md — a SEED repo requires both SEED.md and README.md."
 
-# git-init the seed (local, no network) — fail loudly if it can't be committed
-if [ ! -d "$SEED_DIR/.git" ]; then
-  git -C "$SEED_DIR" init -q || abort "git init of seed failed"
-  git -C "$SEED_DIR" add -A || abort "git add of seed failed"
-  git -C "$SEED_DIR" -c user.name="eval-harness" -c user.email="eval@local" \
-    commit -q -m "seed-create DRAFT (author-creator cook, $TARGET)" || abort "git commit of seed failed"
-fi
+# git-init the seed (local, no network) — the HOST ALWAYS controls git (any cook .git
+# was stripped above); fail loudly if it can't be committed.
+git -C "$SEED_DIR" init -q || abort "git init of seed failed"
+git -C "$SEED_DIR" add -A || abort "git add of seed failed"
+git -C "$SEED_DIR" -c user.name="eval-harness" -c user.email="eval@local" \
+  commit -q -m "seed-create DRAFT (author-creator cook, $TARGET)" || abort "git commit of seed failed"
 
 echo "=== seed repo file list ($SEED_DIR) ==="
 ( cd "$SEED_DIR" && find . -type f -not -path './.git/*' | sort )
