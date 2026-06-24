@@ -115,6 +115,13 @@ BUILD_EXIT=$(grep -oE '\[build\] exit=[0-9]+' "$RUN_DIR/rebuild-build.log" | tai
 BUILD_EXIT="${BUILD_EXIT:-unknown}"
 log "canonical build exit=$BUILD_EXIT (see rebuild-build.log; a failure here is a valid recorded outcome)"
 
+# FREEZE R before collection (Chunk-4 fix #2 CRITICAL / TOCTOU): the workspace is
+# mounted into R, so a cook background process could swap a src file -> symlink between
+# the host walk and copy. The canonical build above was the last thing needing R alive;
+# stop it now => no live mutation window (safe-collect also opens O_NOFOLLOW).
+log "freezing container $CONTAINER before artifact collection (no live mutation window) ..."
+docker stop -t 2 "$CONTAINER" >/dev/null 2>&1 || true
+
 # SAFE-COLLECT the rebuilt artifact to the moduleSurface mount for Chunk 5 (Chunk-4
 # fix CRITICAL): the SAME shared helper as the seed seam — REFUSE any symlink/special
 # in the cook's reconstructed tree (a cook could `ln -s` the target/oracle into src/),

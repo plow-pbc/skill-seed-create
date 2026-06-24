@@ -189,7 +189,15 @@ process.stdout.write(/SEEDCREATE_RESULT=DRAFT/.test(res)?"yes":"no");
 # (3) the cook must have actually written a seed
 [ -n "$(ls -A "$SEED_OUT_HOST" 2>/dev/null)" ] || abort "no seed written under $SEED_OUT_HOST — capture invalid."
 
-# (4) HOST CONTROLS GIT (final-pass IMPORTANT): a cook could plant a .git/ (fake
+# (4) FREEZE the container BEFORE collection (Chunk-4 fix #2 CRITICAL / TOCTOU): the
+#     workspace is mounted into C, so a cook-launched background process could swap a
+#     seed file -> symlink between the host walk and copy. Stopping C kills ALL
+#     in-container processes => no live mutation window. safe-collect then opens with
+#     O_NOFOLLOW as belt+suspenders. (The cook is done; C is no longer needed.)
+log "freezing container $CONTAINER before seed collection (no live mutation window) ..."
+docker stop -t 2 "$CONTAINER" >/dev/null 2>&1 || true
+
+# (5) HOST CONTROLS GIT (final-pass IMPORTANT): a cook could plant a .git/ (fake
 #     history, malicious hooks) in seed-output. Strip ANY cook-created .git BEFORE
 #     collection so the host always re-inits and commits — never trust cook git state.
 find "$SEED_OUT_HOST" -type d -name .git -prune -exec rm -rf {} + 2>/dev/null || true

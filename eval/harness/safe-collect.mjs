@@ -16,8 +16,27 @@
 // Usage: safe-collect.mjs <srcDir> <destDir> [--exclude a,b] [--manifest <path>] [--label <name>]
 // Exit: 0 collected; 8 symlink/out-of-tree refusal; 1 bad args.
 
-import { readdirSync, lstatSync, mkdirSync, copyFileSync, writeFileSync, realpathSync, existsSync, rmSync } from 'node:fs';
+import { readdirSync, lstatSync, mkdirSync, writeFileSync, realpathSync, existsSync, openSync, readSync, fstatSync, closeSync, constants } from 'node:fs';
 import { join, relative, dirname, sep } from 'node:path';
+
+// Copy a file refusing to follow a symlink AT OPEN TIME (O_NOFOLLOW). Defeats a
+// TOCTOU race where a cook bg process swaps a regular file -> symlink between the
+// walk (lstat) and the copy: open() with O_NOFOLLOW fails with ELOOP on a symlink,
+// and we re-assert it's a regular file via fstat on the open fd. (Primary defense is
+// freezing the container before collection; this is by-construction belt+suspenders.)
+function copyNoFollow(from, to) {
+  let fd;
+  try { fd = openSync(from, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  catch (e) { if (e && (e.code === 'ELOOP' || e.code === 'EMLINK')) return { ok: false }; throw e; }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { ok: false };          // not a regular file (symlink/special) -> refuse
+    const buf = Buffer.allocUnsafe(st.size);
+    let off = 0; while (off < st.size) { const n = readSync(fd, buf, off, st.size - off, off); if (n <= 0) break; off += n; }
+    writeFileSync(to, buf.subarray(0, off));
+    return { ok: true };
+  } finally { closeSync(fd); }
+}
 
 const args = process.argv.slice(2);
 const pos = args.filter((a) => !a.startsWith('--'));
@@ -57,13 +76,19 @@ if (symlinks.length) {
   process.exit(8);
 }
 
-// ---- copy regular files + dirs into dest (no-deref) ------------------------
+// ---- copy regular files + dirs into dest (O_NOFOLLOW, TOCTOU-safe) ----------
 mkdirSync(dest, { recursive: true });
 for (const d of dirs) mkdirSync(join(dest, d), { recursive: true });
+const raced = [];
 for (const f of files) {
   const to = join(dest, f);
   mkdirSync(dirname(to), { recursive: true });
-  copyFileSync(join(src, f), to);  // copies file contents; never follows a link (none exist)
+  if (!copyNoFollow(join(src, f), to).ok) raced.push(f);  // became a symlink/special since the walk
+}
+if (raced.length) {
+  console.error(`[${label}] ABORT (TOCTOU): ${raced.length} file(s) became a symlink/special between walk and copy — refusing: ${raced.join(', ')}`);
+  if (manifestPath) writeFileSync(manifestPath, JSON.stringify({ label, src, dest, ok: false, symlinks: raced, files: [] }, null, 2) + '\n');
+  process.exit(8);
 }
 
 // ---- 3: assert every dest entry resolves INSIDE dest ----------------------

@@ -96,8 +96,15 @@ for (const rel of before) {
   const abs = join(seedDir, rel);
   const ext = extname(rel).toLowerCase();
   if (isAllowed(rel)) {
-    // a kept helper script that writes source files is a smuggle vector — flag (keep but loud)
-    if (ext === '.sh' && scriptWritesSource(abs)) smuggleFlags.push({ file: rel, reason: 'script appears to write implementation source (heredoc/redirect/base64)' });
+    // a helper script that EMITS implementation source smuggles source past the strip
+    // (defeats description-only) — REJECT it, don't just flag (Chunk-4 fix #2 IMPORTANT 1).
+    if (ext === '.sh' && scriptWritesSource(abs)) {
+      const reason = 'source-emitting script (writes src via heredoc/redirect/base64 — smuggles source)';
+      smuggleFlags.push({ file: rel, reason });
+      rmSync(abs, { force: true });
+      stripped.push({ file: rel, reason });
+      continue;
+    }
     kept.push(rel);
     continue;
   }
