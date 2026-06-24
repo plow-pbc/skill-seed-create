@@ -51,21 +51,27 @@ log "npm ci against pinned lockfile (net ON) — installs deps+devDeps, NOT the 
   || abort "npm ci failed — see vendor-npm-ci.log"
 [ -d "$PREP_DIR/node_modules" ] || abort "npm ci produced no node_modules"
 
-# ---- 3. assert the TARGET is absent from the vendored set ------------------
+# ---- 3. assert the TARGET is absent — FULL TREE (name + repo-url/alias) -----
+# Top-level check first (fast), then a full-tree scan: nested deps / npm aliases
+# resolving to the target by package name OR repository URL are caught too (Imp2).
 if [ -e "$PREP_DIR/node_modules/$TARGET" ]; then
-  abort "VENDOR BREACH: target package '$TARGET' is present in node_modules — would allow fraudulent rebuild"
+  abort "VENDOR BREACH: target package '$TARGET' present at node_modules top level"
 fi
+node "$EVAL_DIR/harness/assert-target-absent.mjs" "$PREP_DIR/node_modules" "$TARGET" "$REPO" 2>&1 | tee "$RUN_DIR/vendor-fulltree-scan.log" \
+  || abort "VENDOR BREACH: target found in the full vendored tree — see vendor-fulltree-scan.log"
 
 # ---- 4. publish vendor set + listing --------------------------------------
 mv "$PREP_DIR/node_modules" "$VENDOR_DIR/node_modules"
 TOP_COUNT=$(find "$VENDOR_DIR/node_modules" -maxdepth 1 -mindepth 1 | wc -l | tr -d ' ')
+NESTED_NM=$(find "$VENDOR_DIR/node_modules" -mindepth 2 -type d -name node_modules | wc -l | tr -d ' ')
 {
   echo "===== vendored deps for $TARGET @ $SHA (target EXCLUDED by construction) ====="
   echo "timestamp(host clock not used in scripts): see file mtime"
-  echo "top-level node_modules entries: $TOP_COUNT"
+  echo "top-level node_modules entries: $TOP_COUNT ; nested node_modules dirs: $NESTED_NM"
   echo
-  echo "--- target presence check ---"
-  if [ -e "$VENDOR_DIR/node_modules/$TARGET" ]; then echo "TARGET PRESENT: $TARGET  <<< BREACH"; else echo "TARGET ABSENT: $TARGET  (OK)"; fi
+  echo "--- target presence check (top-level + FULL TREE by name + repo-url/alias) ---"
+  if [ -e "$VENDOR_DIR/node_modules/$TARGET" ]; then echo "TARGET PRESENT: $TARGET  <<< BREACH"; else echo "TARGET ABSENT (top-level): $TARGET  (OK)"; fi
+  grep -E "full-tree scan|ABSENT from the full" "$RUN_DIR/vendor-fulltree-scan.log" | sed 's/^\[vendor-scan\] /  /'
   echo
   echo "--- sample of expected deps present (build/score toolchain) ---"
   for d in typescript vitest tsx figlet gradient-string ink react; do

@@ -19,7 +19,7 @@
 // Exit: 0 all proven; 6 a confinement/vendor case FAILED.
 
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, existsSync, readdirSync, statSync, symlinkSync, rmSync, lstatSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, readdirSync, statSync, symlinkSync, rmSync, lstatSync } from 'node:fs';
 import { join, dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './load-config.mjs';
@@ -105,7 +105,11 @@ for (const d of ['typescript', 'vitest', 'tsx']) {
   state('vendorState', `expected dep present: ${d}`, existsSync(join(nm, d)));
 }
 
-// ---- SEED STATE: description-only (no impl source outside node_modules) ----
+// ---- SEED STATE: description-only (what R ACTUALLY received) ----------------
+// Authoritative source = seed-as-received.json (written by strip-seed-source at
+// build-R time). This is correct regardless of WHEN the proof runs — after the
+// rebuild the live workspace legitimately gains reconstructed src/+dist/, which is
+// NOT the seed. Fall back to a workspace walk only if the record is absent (pre-cook).
 function walkNoNM(dir, base = dir, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name === '.git' || e.name === 'node_modules') continue;
@@ -114,7 +118,14 @@ function walkNoNM(dir, base = dir, out = []) {
   }
   return out;
 }
-const seedFiles = existsSync(WS) ? walkNoNM(WS) : [];
+const sarPath = join(runDir, 'seed-as-received.json');
+let seedFiles;
+if (existsSync(sarPath)) {
+  try { seedFiles = JSON.parse(readFileSync(sarPath, 'utf8')).filesReceivedByR || []; }
+  catch { seedFiles = existsSync(WS) ? walkNoNM(WS) : []; }
+} else {
+  seedFiles = existsSync(WS) ? walkNoNM(WS) : [];
+}
 const SRC_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 const seedSource = seedFiles.filter((f) => SRC_EXT.has(extname(f).toLowerCase()));
 state('seedState', 'SEED.md present in the seed R received', seedFiles.includes('SEED.md'));

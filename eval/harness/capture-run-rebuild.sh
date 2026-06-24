@@ -115,11 +115,17 @@ BUILD_EXIT=$(grep -oE '\[build\] exit=[0-9]+' "$RUN_DIR/rebuild-build.log" | tai
 BUILD_EXIT="${BUILD_EXIT:-unknown}"
 log "canonical build exit=$BUILD_EXIT (see rebuild-build.log; a failure here is a valid recorded outcome)"
 
-# copy the rebuilt artifact to the moduleSurface mount for Chunk 5 (exclude deps)
-log "recording rebuilt artifact -> $REBUILT_DIR (moduleSurface=$MOUNT_POINT) ..."
-( cd "$WORKSPACE" && find . -path ./node_modules -prune -o -type f -print ) \
-  | sed 's#^\./##' > "$RUN_DIR/rebuilt-filelist.txt"
-( cd "$WORKSPACE" && tar -cf - --exclude='./node_modules' . ) | ( cd "$REBUILT_DIR" && tar -xf - )
+# SAFE-COLLECT the rebuilt artifact to the moduleSurface mount for Chunk 5 (Chunk-4
+# fix CRITICAL): the SAME shared helper as the seed seam — REFUSE any symlink/special
+# in the cook's reconstructed tree (a cook could `ln -s` the target/oracle into src/),
+# copy no-deref, assert in-tree, and write a manifest that INCLUDES symlinks (so the
+# audit can never hide one). node_modules/.git excluded. Failure here = blindness
+# breach, ABORT (distinct from a build failure, which is a valid recorded outcome).
+log "safe-collecting rebuilt artifact -> $REBUILT_DIR (moduleSurface=$MOUNT_POINT) ..."
+node "$EVAL_DIR/harness/safe-collect.mjs" "$WORKSPACE" "$REBUILT_DIR" \
+  --exclude node_modules,.git --manifest "$RUN_DIR/rebuilt-collect.json" --label artifact \
+  || abort "rebuilt-artifact safe-collect FAILED (symlink/out-of-tree) — blindness breach. See rebuilt-collect.json"
+cp "$RUN_DIR/rebuilt-collect.json" "$RUN_DIR/rebuilt-filelist.txt" 2>/dev/null || true
 
 # REBUILD_COMPLETE marker from the cook's FINAL result (not the prompt echo)
 DONE_OK=$(node -e '

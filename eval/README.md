@@ -197,6 +197,17 @@ hard, and the API surface rarely matches the oracle's import paths exactly. That
 signal (Chunk 5 classifies it: build/test_setup/import/assertion/harness); the rebuild is **never**
 tuned toward the oracle.
 
+**Seam hardening (after adversarial review).** Every host-side collection of cook-produced files
+(the seed seam in `capture-run-cook.sh` AND the rebuilt-artifact seam in `capture-run-rebuild.sh`)
+goes through ONE shared `safe-collect.mjs`: it REFUSES any symlink/special file (so a cook can't
+`ln -s` the oracle/target into its output for the host to deref), copies no-deref, asserts every
+entry resolves in-tree, and writes a manifest that *includes* symlinks (an audit can't hide one).
+The source-strip is an **allowlist** (`strip-seed-source.mjs`): R receives ONLY SEED.md + README.md
++ docs + `scripts/**/*.sh`; implementation source, archives, and binaries are rejected (and
+source-writing scripts flagged) — "description-only" is enforced, not assumed. Vendor target-absence
+is a **full-tree** scan (`assert-target-absent.mjs`): every nested `node_modules` package is checked
+by package name AND repository-url/alias, not just the top level.
+
 ## Scorer — classified fidelity (Chunk 5)
 The codified scorer runs the held-out **oracle** against the **rebuilt** artifact and emits
 `fidelity.json` = X/N + every failure tagged by class. The scorer MAY touch the oracle (it doesn't
