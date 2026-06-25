@@ -167,10 +167,14 @@ without reading implementation bodies: `package.json`
 `main`/`module`/`exports`/`bin`/`types`; any shipped TypeScript declarations
 (`*.d.ts` / the `types` entry — this is the interface by design, not the
 source); the README + `examples/` for the usage form (how consumers
-import/call it, what errors they see); and, if the capability is runnable here,
-`--help` / list-style flags plus each triggered error path to record the exact
-message text. Probe the DECLARED surface only — never read or transcribe
-bodies. These feed `## Interface contracts` (Step 2).
+import/call it, what errors they see); the **test suite** when one is present —
+the single most precise contract source, since tests import the exact export
+names, call the exact signatures, and assert the exact error strings (mine it
+per Step 2; describe what it encodes, never transcribe test bodies); and, if
+the capability is runnable here, `--help` / list-style flags plus each
+triggered error path to record the exact message text. Probe the DECLARED
+surface only — never read or transcribe bodies. These feed `## Interface
+contracts` (Step 2).
 
 Recon output feeds the draft's `## Inputs` detect column, `## Components`,
 and the first `## Failure modes` entries — and often extends `STATE_TO_WIPE`.
@@ -319,6 +323,25 @@ Drafting disciplines — these are what the blind tester will live or die by:
   instead. Finally, strengthen the produced seed's own `## Verify` to assert
   the rebuild exposes EXACTLY these exports and emits EXACTLY these error
   strings, so contract drift fails verification the way a behavioral gap does.
+- **When a TEST SUITE is available, mine it — it is the PRIME contract source.**
+  A project's own tests are the most precise statement of its external contract
+  that exists: they import the exact export NAMES, call them with their exact
+  SIGNATURES, and assert the exact ERROR STRINGS and return VALUES. README and
+  examples show only the surface a doc author chose to document; the tests bind
+  to the *whole* public surface the rebuild must reproduce — including exports
+  no README mentions. So when the capture environment has the tests (your own
+  machine almost always does), READ THEM and pin what they reveal into `##
+  Interface contracts`: every symbol a test imports/calls (with its signature),
+  and every string/value a test asserts (verbatim). A name a test binds to is by
+  definition an external contract (the reimplementor test: a rename breaks that
+  test) — pin it, even if it looked "internal" from the README alone. **But this
+  is mining, NOT transcription:** describe the CONTRACT the tests encode — names,
+  signatures, asserted strings — never paste test bodies, `describe`/`it`
+  blocks, setup/fixtures, or assertion logic into the seed. The same no-bodies
+  smell test applies: if you find yourself copying test code rather than
+  recording one declaration / one error string per line, stop. The seed must
+  read as a spec the rebuild satisfies, never as a copy of the tests it will be
+  scored against (the rebuild never receives the tests — only the seed).
 - **Dependencies: install them, don't punt them.** Hydration builds the
   product from scratch on a machine that may have none of its tooling, so the
   seed installs its own dependencies as ordinary build Steps whenever the
