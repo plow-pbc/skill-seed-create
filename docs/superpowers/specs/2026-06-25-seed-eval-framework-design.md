@@ -61,7 +61,7 @@ N; no hardcoded numbers) — its schema is a Chunk-1 deliverable.
    **leakage audit** (§7); a leaked run is invalidated.
 
 Runs execute **N times** (default 5) and aggregate — a single install is non-deterministic and not
-decision-grade (proven: baseline runs spanned 33–43%).
+decision-grade (proven: repeated baseline runs of a single install spanned a wide range).
 
 ## 5. Inputs & the run-output contract
 
@@ -147,10 +147,10 @@ the build/oracle runs*:
 | | **sample-cli** | **sample-gui** |
 |---|---|---|
 | environment | `docker` | `macos-vm` |
-| `source/` | code **+ its 127 tests** | Swift source, **no tests** |
-| oracle (hidden) | our criteria + reference | our criteria (N≈16) + reference |
-| `tests` | `npm test` (X/127) | — |
-| scorecard | criteria X/N + visual + tests X/127 + code-copy | criteria X/N + visual + code-copy |
+| `source/` | code **+ its own test suite** | the project's source, **no tests** |
+| oracle (hidden) | our criteria + reference | our criteria + reference |
+| `tests` | `npm test` (X/M) | — |
+| scorecard | criteria X/N + visual + tests X/M + code-copy | criteria X/N + visual + code-copy |
 
 **Calibration (honest scope):** sample-cli runs *both* our criteria *and* its unit tests, so we check whether
 our-criteria **tracks** the unit-test score — calibrating the criteria/rubric **discipline** on a
@@ -163,7 +163,7 @@ for "tracks" is set in Chunk 3.
 
 - **Reuse (built + proven):** the docker capture→install→score loop, transcript capture, the unit-test scorer,
   the macOS VM toolkit (clone/run/screenshot/video, `macos-golden`, the 5-check oracle), the sample-cli
-  result, the GUI target's drafted N≈16 criteria. *(Some of these are referenced from the implementation
+  result, the GUI target's drafted criteria. *(Some of these are referenced from the implementation
   notes and are not all committed in this repo.)*
 - **New:** the `eval.json` manifest + thin dispatcher; the `evals/<target>/{source,oracle,runs}` restructure
   (migrating the v1 `eval/` tree); the composable **oracle/Evaluator** (criteria + visual + tests + code-copy →
@@ -236,7 +236,7 @@ image is verified clean of `oracle/`.
 
 ### Chunk 6: sample-gui oracle content + behavioral-visual scorer + first sample-gui runs
 Implements: §6 (behavioral + visual), §9 (sample-gui)
-Interfaces: consumes the sample-gui behavioral-oracle draft (N≈16 + reference plan); produces
+Interfaces: consumes the sample-gui behavioral-oracle draft (behavioral criteria + reference plan); produces
 `evals/sample-gui/oracle/{criteria.json, reference/}` + the screenshot/video capture + the blinded rubric judge.
 Done when: sample-gui runs end-to-end on the macos-vm runner producing a tiered scorecard (gates + X/N + visual
 verdict + code-copy) with evidence; the isolation criterion uses the corrected two-tone method; VM-untestable

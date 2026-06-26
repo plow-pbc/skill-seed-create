@@ -40,7 +40,10 @@ jget() { node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],
 [ "$(jget runner.id)" = "docker" ] || abort "run.sh is the docker lane; manifest selects '$(jget runner.id)'"
 IMAGE=$(jget environment.image); SHA=$(jget source.sha)
 EVAL_DIR="$EVAL_ROOT/evals/$TARGET"; SOURCE_DIR="$EVAL_DIR/source"; RUNS="$EVAL_DIR/runs"
-SKILL_REPO="${SEED_CREATE_REPO:-/Users/plucas/cncorp/skill-seed-create}"
+# The seed-create skill repo = the repo this eval/ tree lives in (two levels up from
+# framework/). Override with SEED_CREATE_REPO if running the engine from elsewhere.
+SKILL_REPO="${SEED_CREATE_REPO:-$(cd "$EVAL_ROOT/.." && pwd)}"
+[ -d "$SKILL_REPO" ] || abort "seed-create skill repo not found at $SKILL_REPO (set SEED_CREATE_REPO)"
 # Denylist (published target): block the target PACKAGE (registry) + the target REPO PATH —
 # NOT the whole repo host. A shared code host (github.com/gitlab.com/…) also serves legit
 # deps, so host-level blocking would deny those too. For a shared host we deny only the

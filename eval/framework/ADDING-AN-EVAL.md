@@ -85,7 +85,7 @@ Copy this template into `evals/dmp/eval.json` and edit. (Validated by
     "testsLocked": "oracle/tests-locked",
     "testGlobs": ["__tests__/**/*.{test,spec}.{js,ts,tsx}", "vitest.config.ts"],
     "lockfile": "package-lock.json",
-    "expectedTestCount": 127
+    "expectedTestCount": 12
   }
 }
 ```

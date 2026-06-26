@@ -95,9 +95,8 @@ framework/setup.sh sample-cli
 ```
 1. **materialize** `source/` (clone @ pinned sha; anchor HEAD==sha),
 2. **build** the original in the environment (`npm ci && npm run build`),
-3. **assert the oracle is green** on the known-good original — at Chunk 1 the green
-   signal is the project's own tests (`npx vitest run`, expect 127/127); our-criteria
-   green-check arrives with Chunk-3 content,
+3. **assert the oracle is green** on the known-good original — the green signal is the
+   project's own tests (e.g. `npx vitest run`, expect all passing) plus our-criteria,
 4. **capture reference** evidence (built-CLI invocations → `oracle/reference/<id>.txt` + `index.json`),
 5. **snapshot the held-out test copy** (`setup.testGlobs` + lockfile → `oracle/tests-locked/`),
    so the Evaluator never runs the mutable `source/` tree,
