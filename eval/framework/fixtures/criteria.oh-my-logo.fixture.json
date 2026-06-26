@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "count": 4,
+  "criteria": [
+    {
+      "id": "renders-ascii-art",
+      "description": "Rendering text produces multi-line ASCII-art output on stdout (the core action).",
+      "category": "user-visible",
+      "tier": "gate",
+      "check": { "type": "cli", "argv": ["OH MY LOGO"], "expectExit": 0, "stdoutNonEmpty": true, "minLines": 5 }
+    },
+    {
+      "id": "lists-palettes",
+      "description": "--list-palettes lists the built-in palettes, including sunset and grad-blue.",
+      "category": "user-visible",
+      "tier": "graded",
+      "check": { "type": "cli", "argv": ["--list-palettes"], "expectExit": 0, "stdoutContains": ["sunset", "grad-blue"] }
+    },
+    {
+      "id": "palette-positional",
+      "description": "A built-in palette is selectable via the positional [palette] argument.",
+      "category": "user-visible",
+      "tier": "graded",
+      "check": { "type": "cli", "argv": ["HELLO", "sunset"], "expectExit": 0, "stdoutNonEmpty": true, "minLines": 4 }
+    },
+    {
+      "id": "unknown-palette-errors",
+      "description": "An unknown palette name fails with a clear 'Unknown palette' error (error/empty-state contract).",
+      "category": "error-empty-state",
+      "tier": "graded",
+      "check": { "type": "cli", "argv": ["HELLO", "not-a-real-palette"], "expectExitNonZero": true, "stderrContains": ["Unknown palette"] }
+    }
+  ]
+}

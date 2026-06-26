@@ -129,7 +129,9 @@ function pruneEmpty(dir) {
 pruneEmpty(seedDir);
 
 const after = walk(seedDir).sort();
-const seedMdPresent = after.includes('SEED.md');
+// Accept the repo seed-create layout too (Blocker A): SEED.md OR a <name>.seed.md at
+// ANY depth (the repo skill emits seeds/<name>/<name>.seed.md, or a flat <name>.seed.md).
+const seedMdPresent = after.some((f) => f === 'SEED.md' || /(?:^|\/)[^/]+\.seed\.md$/i.test(f));
 // allowlist invariant: NOTHING outside the allowlist may remain (enforced, not assumed)
 const nonAllowedRemaining = after.filter((f) => !isAllowed(f));
 
@@ -157,9 +159,10 @@ if (nonAllowedRemaining.length) {
   console.error(`[seed-strip] ABORT: non-allowlisted file(s) survived: ${nonAllowedRemaining.join(', ')}`);
   process.exit(7);
 }
-if (!seedMdPresent || !record.readmePresent) {
-  console.error('[seed-strip] ABORT: a SEED repo requires BOTH SEED.md and README.md.');
+if (!seedMdPresent) {
+  console.error('[seed-strip] ABORT: no seed file (SEED.md or <name>.seed.md) survived the strip.');
   process.exit(7);
 }
+// README.md is NOT required: the repo seed-create format ships only <name>.seed.md.
 console.log('[seed-strip] OK: R receives description-only seed (allowlist enforced; no symlinks).');
 process.exit(0);

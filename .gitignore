@@ -11,3 +11,20 @@ harden-*-log.md
 # never source. The dir itself is kept via .gitkeep.
 eval/runs/*
 !eval/runs/.gitkeep
+
+# ============================================================================
+# Eval data is kept LOCAL while the targets are still being fleshed out — the
+# ENTIRE evals/ tree is gitignored (sources, runs, oracle, definitions,
+# screenshots, calibration — everything). The committed framework is the CODE
+# (framework/) + docs; the eval *definitions* land later, on their own.
+# To start committing eval definitions, narrow this to the specific outputs
+# (runs/, source/, .setup/, tests-locked/, …) instead of the whole dir.
+# ============================================================================
+eval/evals/
+
+# --- dampe-LANE files are dampe-SPECIFIC (local, like all dampe) — NOT part of the
+#     generic framework engine, so kept local (eng-macos owns them). STRUCTURAL
+#     FOLLOW-UP: these belong under evals/dampe/, not framework/ — move in a later
+#     cleanup. The generic macos runner does not import any of them. ---
+eval/framework/*dampe*
+eval/framework/visual-judge.sh

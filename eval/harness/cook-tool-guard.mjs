@@ -12,10 +12,13 @@
 //     traversal, and symlink escapes (we realpath the nearest existing ancestor,
 //     which collapses `..` lexically and resolves any symlinked component).
 //
-//   NETWORK axis: `Bash` is confined to `docker exec <NAME>` into the net-off
-//     capture container (env COOK_CAPTURE_CONTAINER); container-escape / network
-//     -reconfig verbs are blocked. The cook therefore has NO host-shell and NO
-//     net path; the container's --network none is proven separately (egress log).
+//   SHELL/CONTAINMENT axis: `Bash` is confined to `docker exec <NAME>` into the
+//     run's designated cook container (env COOK_CAPTURE_CONTAINER); container-escape
+//     / network-reconfig verbs are blocked, so the cook has NO host shell. NOTE the
+//     container is NETWORK-ON (routed through the logging + target-denylist egress
+//     proxy) — it is NOT net-off. Blindness is enforced by the stripped WORKSPACE
+//     CONTENTS + the post-hoc leakage audit + the active denylist, not by net-off
+//     (Global Constraint: no net-off lane). The proxy logs every fetch to egress.log.
 //
 // Network-capable tools (WebFetch/WebSearch/Agent/Task/AskUserQuestion) are denied
 // here too (defense in depth; they are also withheld at launch). Skill/TodoWrite
@@ -167,10 +170,10 @@ if (FILE_TOOLS.has(tool)) {
 // ---- network-capable tools: deny (defense in depth) ------------------------
 const NET_TOOLS = new Set(['WebFetch', 'WebSearch', 'Agent', 'Task', 'AskUserQuestion']);
 if (NET_TOOLS.has(tool)) {
-  decide('deny', `BLINDNESS GATE: ${tool} is not permitted — the cook is test-blind and offline.`);
+  decide('deny', `BLINDNESS GATE: ${tool} is not permitted — the cook is test-blind; its only egress is the proxied container shell (logged + target-denylisted).`);
 }
 
-// ---- Bash: confine to ONE docker-exec-into-net-off-container invocation ------
+// ---- Bash: confine to ONE docker-exec-into-the-cook-container invocation -----
 // Prior CRITICAL bypass: the allow-rule was prefix-only, so anything after a
 // well-formed `docker exec NAME ...` ran on the HOST —
 //   docker exec NAME sh -lc 'true'; curl ...        (host chain)
@@ -207,16 +210,17 @@ if (tool === 'Bash') {
     decide('deny',
       `BLINDNESS GATE (network): host-level shell metacharacter "${meta}" is not permitted. ` +
         `Run EXACTLY one  docker exec ${NAME} sh -lc '<script>'  — put all chaining/pipes/redirects ` +
-        `INSIDE the single-quoted script (it executes in the offline container, not on the host).`);
+        `INSIDE the single-quoted script (it executes in the proxied container, not on the host).`);
   }
 
-  // Hard blocks: anything that could escape the net-off container or open a net path.
+  // Hard blocks: anything that could escape the cook container or reconfigure its networking
+  // (which would bypass the logging+denylist egress proxy).
   const ESCAPE = /(docker\s+(run|create|network|cp|build)|--network|--privileged|--cap-add|nsenter|\bunshare\b|\bip\s+netns\b|\/proc\/1\/root)/i;
   if (ESCAPE.test(cmd)) {
     decide('deny', 'BLINDNESS GATE (network): container-escape / network-reconfig verb is not permitted.');
   }
 
-  // Allow ONLY `docker exec [flags] <NAME> …` into the run's designated net-off
+  // Allow ONLY `docker exec [flags] <NAME> …` into the run's designated cook
   // container (NAME is pinned exactly; a different/long-prefixed container fails).
   const flag = '(?:-[itu]+|--interactive|--tty|-e\\s+\\S+|--env\\s+\\S+|-w\\s+\\S+|--workdir(?:=|\\s+)\\S+|-u\\s+\\S+)';
   const allowed = NAME && new RegExp(
@@ -224,13 +228,14 @@ if (tool === 'Bash') {
       NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:\\s|$)'
   );
   if (allowed && allowed.test(cmd)) {
-    decide('allow', `confined: single docker exec into net-off container ${NAME}`);
+    decide('allow', `confined: single docker exec into cook container ${NAME} (net-on, proxied + logged)`);
   }
 
   decide('deny',
-    `BLINDNESS GATE (network): the cook's shell is confined to the OFFLINE container "${NAME}". ` +
-      `Run shell ONLY as:  docker exec ${NAME} sh -lc '<command>'  (it has NO network; do not and ` +
-      `cannot fetch the target). Study files with Read/Glob/Grep inside the stripped workspace.`);
+    `BLINDNESS GATE (containment): the cook's shell is confined to the container "${NAME}". ` +
+      `Run shell ONLY as:  docker exec ${NAME} sh -lc '<command>'  (network is ON but routed through the ` +
+      `logging + denylist proxy — deps are fine; the target package/repo is denied + post-hoc audited). ` +
+      `Study files with Read/Glob/Grep inside the stripped workspace.`);
 }
 
 // ---- deny-by-default: only an explicit allow-list of safe, non-file/non-network

@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "seed-eval/eval.schema.json",
+  "title": "eval.json — seed-eval target manifest",
+  "description": "One manifest per eval target (evals/<name>/eval.json). Declares the environment runner, how to materialize+build source/, the project's own tests (optional), the hidden oracle spec, and the Setup-stage inputs (reference captures + the held-out test snapshot). See framework/README.md and the v3 design spec §3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "environment", "oracle", "setup"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Target name; must equal the evals/<name>/ directory."
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "image"],
+      "description": "Selects the environment runner (§8). docker = agent+software co-located in a container; macos-vm = agent on host driving a headless guest over SSH.",
+      "properties": {
+        "type": { "type": "string", "enum": ["docker", "macos-vm"] },
+        "image": { "type": "string", "description": "Logical image name resolved by the runner (e.g. node20-eval, gui-ready-audio)." }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OPTIONAL. How Setup materializes source/. When present, Setup clones repo@sha into source/ and asserts HEAD==sha. When absent, source/ is expected to be pre-populated (committed full project, e.g. dampe).",
+      "required": ["repo", "sha"],
+      "properties": {
+        "repo": { "type": "string" },
+        "ref": { "type": "string", "description": "Human-readable tag/branch for provenance (informational; sha is authoritative)." },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OPTIONAL. Build commands Setup runs in the environment to stand up the original. Required in practice for any target Setup must build (the docker lane errors clearly if absent).",
+      "required": ["install", "build"],
+      "properties": {
+        "install": { "type": "string" },
+        "build": { "type": "string" }
+      }
+    },
+    "tests": {
+      "type": "string",
+      "description": "OPTIONAL. The project's OWN test command, run from the scorer-only held-out copy (Setup snapshot). Present only where the project has tests (oh-my-logo: npx vitest run; dampe: omitted)."
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["components"],
+      "description": "OPTIONAL per-project SCORING RECIPE. The Evaluator rolls the listed component signals into ONE composite TREND number per run (weighted average over the PRESENT components); every component is ALSO shown in the scorecard breakdown. This is a trend signal (is seed-create holding/improving), NOT pass/fail — there are no gates. oh-my-logo = tests-dominated; dampe = behavioral-checks + screenshot-match (no tests). When absent, the Evaluator falls back to a built-in default recipe.",
+      "properties": {
+        "note": { "type": "string" },
+        "components": {
+          "type": "array",
+          "description": "Each component contributes weight*normalizedSignal to the composite. A component whose signal cannot be measured (e.g. a test-harness failure) is EXCLUDED and the remaining weights renormalize — a harness failure never tanks the trend number; it is surfaced as its own visible component.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "weight", "metric"],
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]*$", "description": "stable component id (e.g. projectTests, ourCriteria, visual, build, codeCopy, behavioralChecks, screenshotMatch)." },
+              "label": { "type": "string" },
+              "weight": { "type": "number", "minimum": 0 },
+              "metric": { "type": "string", "enum": ["ratio", "value", "build", "boolPenalty"], "description": "ratio = num/den from evidence; value = a 0..1 field; build = buildOk?1:0; boolPenalty = field truthy→0 else 1 (penalize, never zero the whole number)." },
+              "evidence": { "type": "string", "description": "evidence filename under score/evidence/ (e.g. tests.json, criteria.json, visual.json, code-copy.json, or a lane-specific file)." },
+              "num": { "type": "string" },
+              "den": { "type": "string" },
+              "field": { "type": "string" },
+              "harnessGuard": { "type": "string", "enum": ["tests"], "description": "If set, the component is treated as ABSENT (excluded + surfaced as a harness failure) when its evidence status indicates the harness could not run (a setup/build failure), rather than counting as a 0 fidelity result." }
+            }
+          }
+        }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criteria", "reference"],
+      "description": "The hidden evaluation material (§2). Paths are relative to the eval dir. Never materialized into the Creator or Installer workspace.",
+      "properties": {
+        "criteria": { "type": "string", "description": "Path to criteria.json (our behavioral checks)." },
+        "reference": { "type": "string", "description": "Path to the captured-reference dir (the original's evidence)." }
+      }
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["referenceCaptures", "testsLocked"],
+      "description": "Inputs the Setup stage needs: how to capture reference evidence, and where/what to snapshot as the held-out test copy.",
+      "properties": {
+        "referenceCaptures": {
+          "type": "array",
+          "description": "Canonical invocations of the built original whose output becomes oracle/reference/<id>. For docker/CLI targets, argv is passed to the project's CLI bin; stdout is saved.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "argv"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              "argv": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "testsLocked": { "type": "string", "description": "Path (under the eval dir, inside oracle/) where Setup snapshots the held-out copy of the project's tests. Scorer-only." },
+        "testGlobs": {
+          "type": "array",
+          "description": "Globs (relative to source/) of the files to snapshot as the held-out test copy. Required when `tests` is present.",
+          "items": { "type": "string" }
+        },
+        "lockfile": { "type": "string", "description": "Lockfile to include in the snapshot for deterministic scorer installs (optional)." },
+        "expectedTestCount": { "type": "integer", "minimum": 0, "description": "Sanity anchor: the green test count expected at the pin (Setup asserts the discovered total matches)." }
+      }
+    }
+  }
+}

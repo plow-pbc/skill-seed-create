@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "seed-eval/criteria.schema.json",
+  "title": "criteria.json — oracle behavioral criteria",
+  "description": "OUR machine-checkable, product-contract behaviors used to score the installed software (§6, dimension 1). Hidden from both the Seed Creator and the Seed Installer. The file records its OWN expected count (`count`) so the Evaluator discovers N rather than hardcoding it; validation asserts count == criteria.length (validate.mjs --assert-count count:criteria). The per-criterion `check` object is intentionally open: its concrete shapes are defined by the Evaluator (Chunk 2). Criteria content for oh-my-logo is authored in Chunk 3; this schema is the Chunk-1 deliverable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "count", "criteria"],
+  "properties": {
+    "version": { "type": "integer", "enum": [1] },
+    "note": { "type": "string", "description": "OPTIONAL free-text provenance/authoring note for the file (e.g. how the criteria were derived)." },
+    "$comment": { "type": "string", "description": "OPTIONAL JSON-Schema-style comment." },
+    "count": { "type": "integer", "minimum": 0, "description": "Self-declared N; MUST equal criteria.length (enforced by validate.mjs --assert-count)." },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "category", "tier", "check"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "description": { "type": "string", "description": "What product-visible behavior this verifies — never implementation trivia." },
+          "category": {
+            "type": "string",
+            "enum": ["user-visible", "platform", "persistence", "error-empty-state"],
+            "description": "The product-contract dimension (§6)."
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["gate", "graded"],
+            "description": "gate = a hard gate (build/launch/core-action) whose failure forces the graded score to 0; graded = a normal scored criterion."
+          },
+          "check": {
+            "type": "object",
+            "required": ["type"],
+            "description": "How the Evaluator verifies this criterion. The `type` selects a checker; remaining fields are checker-specific (defined in Chunk 2). Left open here (additionalProperties allowed).",
+            "properties": {
+              "type": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
