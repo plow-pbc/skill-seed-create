@@ -5,7 +5,7 @@
 #
 # Engine: Tart. We launch with PLAIN NAT + nohup + caffeinate (NOT `neo-vm run`, which
 # uses --net-softnet → `tart ip` returns nothing, and is not nohup'd → dies with the SSH
-# session). This is the proven eval-VM launch path (neo-vm-proof/INDEX.md, TURNKEY note).
+# session). This is the proven eval-VM launch path.
 # Keychain is unlocked IN-SESSION before each launch (macOS 15+ requirement).
 #
 # No side effects on source. Requires: tart, rsync, ssh, node, caffeinate, security.
