@@ -5,3 +5,25 @@
 # Per the seed-create doctrine these logs are ephemeral; the durable record
 # is git history. Never committed.
 harden-*-log.md
+
+# Eval run records are runtime OUTPUTS (target clone, node_modules, build/test
+# logs, scorecards, index.json). Reproducible by re-running the harness; never
+# source. The dir itself is kept via .gitkeep.
+eval/runs/*
+!eval/runs/.gitkeep
+
+# ============================================================================
+# Eval DATA is kept LOCAL while targets are still being fleshed out — the
+# ENTIRE evals/ tree is gitignored (sources, runs, oracle, definitions,
+# screenshots, calibration — everything). The committed framework is the generic
+# ENGINE (eval/framework/) + the shared harness deps + docs; concrete eval
+# *definitions* land later, on their own.
+# To start committing an eval definition, narrow this to that target's outputs
+# (runs/, source/, .setup/, tests-locked/, …) instead of the whole dir.
+# ============================================================================
+eval/evals/
+
+# Target-specific or local-only lane scripts belong under evals/<target>/ (above,
+# gitignored), NOT in the generic framework/ engine. Any kept locally beside the
+# engine during development use a `.local.` infix so they are never committed.
+eval/framework/*.local.*
