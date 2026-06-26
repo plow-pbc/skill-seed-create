@@ -104,7 +104,7 @@ function globPrefix(s) {
 }
 
 // Expand `{a,b,c}` brace alternatives (one or more, nested) into concrete strings.
-// Mirrors strip-oracle.mjs; bounded recursion. A glob param escapes if ANY branch does.
+// Standard glob brace expansion; bounded recursion. A glob param escapes if ANY branch does.
 function expandBraces(p) {
   const i = p.indexOf('{');
   if (i === -1) return [p];

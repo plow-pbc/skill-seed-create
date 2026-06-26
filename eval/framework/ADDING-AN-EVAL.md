@@ -53,7 +53,7 @@ Copy this template into `evals/dmp/eval.json` and edit. (Validated by
 ```json
 {
   "name": "dmp",
-  "environment": { "type": "docker", "image": "node20-eval" },
+  "environment": { "type": "docker", "image": "node:20.18.1-bookworm-slim", "pull": true },
 
   "source": {
     "repo": "https://github.com/acme/dmp.git",
@@ -93,10 +93,13 @@ Copy this template into `evals/dmp/eval.json` and edit. (Validated by
 Field notes:
 
 - **`name`** must equal the folder name (`evals/<name>/`).
-- **`environment.image`** names this eval's build image. The framework ships no images;
-  supply one EITHER as a prebuilt/public ref (e.g. `node:20-bookworm-slim`, pulled) OR as a
-  Dockerfile in the eval's own folder at `evals/<name>/images/<image>/Dockerfile` (docker).
-  (macos-vm uses a VM image named by `environment.image`.)
+- **`environment.image`** names this eval's build image. The framework ships no images — two modes:
+  - **build-local**: a Dockerfile in the eval's own folder at `evals/<name>/images/<image>/Dockerfile`
+    (`image` is then a logical tag). Used automatically when that file exists.
+  - **explicit-external**: a registry/tag/digest-qualified ref (e.g. `node:20.18.1-bookworm-slim`)
+    pulled at Setup — you MUST also set `"pull": true`. Setup **fails closed** (no Dockerfile + no
+    `pull` ⇒ error), so a typo'd or squatted image name is never silently run.
+  - (macos-vm uses a VM golden-image name via `environment.image`.)
 - **`source`** — Setup clones `repo`, checks out the pinned **`sha`**, and asserts
   `HEAD == sha` (the `ref` tag is provenance only). Omit `source` if you commit a `source/`
   tree directly (some macos targets do).

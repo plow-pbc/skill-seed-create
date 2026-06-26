@@ -31,6 +31,7 @@ jget() { node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],
 RUNNER=$(jget runner.id)
 [ "$RUNNER" = "docker" ] || abort "setup.sh is the DOCKER runner; manifest selects '$RUNNER' (use the macos-vm Setup instead)"
 IMAGE=$(jget environment.image)
+PULL=$(jget environment.pull)
 REPO=$(jget source.repo); SHA=$(jget source.sha); REF=$(jget source.ref)
 INSTALL=$(jget build.install); BUILD=$(jget build.build); TESTSCMD=$(jget testsCmd)
 EXPECTED=$(jget setup.expectedTestCount)
@@ -44,15 +45,21 @@ LOCKED_DIR=$(jget setup.testsLockedAbs)
 log "target=$TARGET runner=$RUNNER image=$IMAGE  eval-dir=$EVAL_DIR"
 [ -n "$BUILD" ] || abort "manifest has no build commands — docker Setup needs build.install + build.build"
 
-# ---- 1. ensure the build image — the EVAL supplies its environment ----------------
-# The framework ships NO image. environment.image is EITHER a prebuilt/public image ref
-# (pulled) OR a Dockerfile in the eval's own folder (evals/<target>/images/<image>/).
+# ---- 1. ensure the build image — the EVAL supplies its environment (FAIL CLOSED) ---
+# The framework ships NO image. Two modes:
+#   (a) BUILD-LOCAL    : a Dockerfile in the eval's own folder (evals/<target>/images/<image>/).
+#   (b) EXPLICIT-EXTERNAL: a registry ref pulled at Setup — ONLY when environment.pull=true.
+# With no local Dockerfile and no explicit pull opt-in we ABORT — we never silently pull an
+# arbitrary manifest string (a typo / squatted name must not run an unintended public image).
 if [ -f "$EVAL_DIR/images/$IMAGE/Dockerfile" ]; then
   log "building image $IMAGE from evals/$TARGET/images/$IMAGE ..."
   docker build -t "$IMAGE" "$EVAL_DIR/images/$IMAGE" > "$TMP/image-build.log" 2>&1 || { cat "$TMP/image-build.log"; abort "image build failed"; }
-else
+elif [ "$PULL" = "true" ]; then
+  log "pulling external image $IMAGE (environment.pull=true) ..."
   docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull "$IMAGE" >/dev/null 2>&1 \
-    || abort "image '$IMAGE' is not present locally, not pullable, and has no evals/$TARGET/images/$IMAGE/Dockerfile to build it"
+    || abort "environment.pull=true but image '$IMAGE' could not be pulled (check the registry/tag/digest ref)"
+else
+  abort "no evals/$TARGET/images/$IMAGE/Dockerfile to build image '$IMAGE', and environment.pull is not set — refusing to pull an unverified image. Add a Dockerfile, or set environment.pull:true with a registry/tag/digest-qualified ref."
 fi
 
 # ---- 2. materialize source/ (clone @ pinned sha; the FULL project the Creator sees) ----

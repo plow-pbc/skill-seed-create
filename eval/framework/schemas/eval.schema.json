@@ -19,7 +19,8 @@
       "description": "Selects the environment runner (§8). docker = agent+software co-located in a container; macos-vm = agent on host driving a headless guest over SSH.",
       "properties": {
         "type": { "type": "string", "enum": ["docker", "macos-vm"] },
-        "image": { "type": "string", "description": "Logical image name resolved by the runner (e.g. node20-eval, gui-ready-audio)." }
+        "image": { "type": "string", "description": "The environment image. TWO MODES (docker): (a) BUILD-LOCAL — a logical tag built from the eval's own Dockerfile at evals/<target>/images/<image>/Dockerfile (the default; used when that file exists). (b) EXPLICIT-EXTERNAL — a registry/tag/digest-qualified ref (e.g. node:20.18.1-bookworm-slim) pulled at Setup; this REQUIRES `pull: true` so an arbitrary/typo'd manifest string is never silently run. For macos-vm this is the VM golden-image name." },
+        "pull": { "type": "boolean", "description": "OPTIONAL (docker). Set true to EXPLICITLY opt into pulling `image` as an external registry ref when no local Dockerfile is present. Setup FAILS CLOSED otherwise: no Dockerfile + no `pull:true` => error, never a silent pull. Use a pinned tag or digest." }
       }
     },
     "source": {

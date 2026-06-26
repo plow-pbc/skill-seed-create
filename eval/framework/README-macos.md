@@ -64,4 +64,4 @@ run-summary.md}` + `runs/index.json`.
 
 > Launch detail: eval VMs boot with **plain NAT + nohup + caffeinate** (not `neo-vm run`, which
 > uses `--net-softnet` → `tart ip` returns nothing and dies with the SSH session). Keychain is
-> unlocked in-session before each launch (macOS 15+). See `notes/neo-vm-proof/INDEX.md` (TURNKEY).
+> unlocked in-session before each launch (macOS 15+).
