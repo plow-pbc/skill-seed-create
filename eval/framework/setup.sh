@@ -44,12 +44,15 @@ LOCKED_DIR=$(jget setup.testsLockedAbs)
 log "target=$TARGET runner=$RUNNER image=$IMAGE  eval-dir=$EVAL_DIR"
 [ -n "$BUILD" ] || abort "manifest has no build commands — docker Setup needs build.install + build.build"
 
-# ---- 1. ensure the logical image (build from framework/images/<image>/ if present) ----
-if [ -f "$FW_DIR/images/$IMAGE/Dockerfile" ]; then
-  log "building image $IMAGE from framework/images/$IMAGE ..."
-  docker build -t "$IMAGE" "$FW_DIR/images/$IMAGE" > "$TMP/image-build.log" 2>&1 || { cat "$TMP/image-build.log"; abort "image build failed"; }
+# ---- 1. ensure the build image — the EVAL supplies its environment ----------------
+# The framework ships NO image. environment.image is EITHER a prebuilt/public image ref
+# (pulled) OR a Dockerfile in the eval's own folder (evals/<target>/images/<image>/).
+if [ -f "$EVAL_DIR/images/$IMAGE/Dockerfile" ]; then
+  log "building image $IMAGE from evals/$TARGET/images/$IMAGE ..."
+  docker build -t "$IMAGE" "$EVAL_DIR/images/$IMAGE" > "$TMP/image-build.log" 2>&1 || { cat "$TMP/image-build.log"; abort "image build failed"; }
 else
-  docker image inspect "$IMAGE" >/dev/null 2>&1 || abort "image $IMAGE not found and no framework/images/$IMAGE/Dockerfile to build it"
+  docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull "$IMAGE" >/dev/null 2>&1 \
+    || abort "image '$IMAGE' is not present locally, not pullable, and has no evals/$TARGET/images/$IMAGE/Dockerfile to build it"
 fi
 
 # ---- 2. materialize source/ (clone @ pinned sha; the FULL project the Creator sees) ----

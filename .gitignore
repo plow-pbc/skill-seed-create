@@ -1,6 +1,11 @@
 # macOS
 .DS_Store
 
+# Higher-level design docs are kept LOCAL (the canonical doc + design spec live with the
+# project's design notes, not in this repo). The framework's own usage docs ship with the
+# code under eval/framework/ and are committed.
+docs/
+
 # Harden-loop working scratch — created if the skill is run in-place.
 # Per the seed-create doctrine these logs are ephemeral; the durable record
 # is git history. Never committed.

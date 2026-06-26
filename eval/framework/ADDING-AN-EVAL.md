@@ -3,8 +3,8 @@
 Self-service guide to add a new target (say a new app **DMP**) and start getting a trend
 number for it. Every command below is real; run them from the eval root (`eval/`).
 
-For the *concepts* (what seed-create is, the four-stage flow, the one-number model) read
-[`docs/eval-framework.md`](../../docs/eval-framework.md) first — this guide is the *how*.
+For the *concepts* (what seed-create is, the four-stage flow, the one-number model) see the
+framework [`README.md`](README.md) first — this guide is the *how*.
 
 ---
 
@@ -93,9 +93,10 @@ Copy this template into `evals/dmp/eval.json` and edit. (Validated by
 Field notes:
 
 - **`name`** must equal the folder name (`evals/<name>/`).
-- **`environment.image`** is a logical image the runner resolves from
-  `framework/images/<image>/Dockerfile` (docker) — `node20-eval` exists; add a Dockerfile
-  for a new one. (macos-vm uses a VM image named by `environment.image`.)
+- **`environment.image`** names this eval's build image. The framework ships no images;
+  supply one EITHER as a prebuilt/public ref (e.g. `node:20-bookworm-slim`, pulled) OR as a
+  Dockerfile in the eval's own folder at `evals/<name>/images/<image>/Dockerfile` (docker).
+  (macos-vm uses a VM image named by `environment.image`.)
 - **`source`** — Setup clones `repo`, checks out the pinned **`sha`**, and asserts
   `HEAD == sha` (the `ref` tag is provenance only). Omit `source` if you commit a `source/`
   tree directly (some macos targets do).

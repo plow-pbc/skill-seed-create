@@ -8,9 +8,9 @@ drives a headless macOS guest over SSH).
 
 ## Start here
 
-- **New to the model?** → [`docs/eval-framework.md`](../../docs/eval-framework.md) — what
-  seed-create is, the four-stage flow (Setup → Seed Creator → Seed Installer → Evaluator),
-  and the one-number model. The concepts; this file is the internals.
+- **New to the model?** The headline above covers it — seed-create captures a working app into
+  a SEED that a *blind* agent rebuilds, scored as ONE composite trend number over the four stages
+  (Setup → Seed Creator → Seed Installer → Evaluator). The rest of this file is the internals.
 - **Adding or running an eval?** → **[`ADDING-AN-EVAL.md`](ADDING-AN-EVAL.md)** — the
   step-by-step quickstart: create the folder, write `eval.json` + the scoring recipe, author
   the oracle, Setup, run, read the number — with copy-paste templates + worked examples
@@ -44,15 +44,15 @@ evals/<target>/
     reference/       #   captured reference evidence (Setup) + index.json
     tests-locked/    #   held-out snapshot of the project's tests (Setup) — scorer-only
     setup.json       #   Setup report: build ok + oracle-green verdict + reference/snapshot manifests
-  runs/              # per-run outputs (Chunk 4) + index.json rollup. gitignored.
+  runs/              # per-run outputs + index.json rollup. gitignored.
+  images/<image>/Dockerfile   # OPTIONAL: this eval's build image (docker), if not a prebuilt ref
 
 framework/
-  schemas/{eval.schema.json, criteria.schema.json}   # the two Chunk-1 schemas
+  schemas/{eval.schema.json, criteria.schema.json}   # the two manifest/oracle schemas
   validate.mjs       # dependency-free JSON-schema validator (+ --assert-count)
   dispatch.mjs       # the thin dispatcher: eval.json -> resolved {runner, oracle, tests-cmd, ...}
   setup.sh           # the Setup stage (docker runner)
   capture-reference.mjs / snapshot-tests.mjs / setup-report.mjs   # Setup helpers
-  images/<image>/Dockerfile                          # logical images the runner resolves
 ```
 
 ## The two schemas
